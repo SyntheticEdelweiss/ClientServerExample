@@ -1,0 +1,87 @@
+# Directories with generated files
+.moc/
+.obj/
+.pch/
+.rcc/
+.uic/
+.ui/
+bin/
+moc/
+obj/
+rcc/
+uic/
+ui/
+build*/
+debug*/
+release*/
+
+# Analyzers
+.qtc_clangd/
+
+# Binaries
+*.a
+*.so
+*.so.*
+*.dll
+*.exe
+
+# qtcreator generated files
+*.pro.user*
+*.qbs.user*
+CMakeLists.txt.user*
+
+# Visual Studio generated files
+*.ib_pdb_index
+*.idb
+*.ilk
+*.pdb
+*.sln
+*.suo
+*.vcproj
+*vcproj.*.*.user
+*.ncb
+*.sdf
+*.opensdf
+*.vcxproj
+*vcxproj.*
+
+# Other
+*~
+*.autosave
+*.core
+*.moc
+*.o
+*.obj
+*.orig
+*.rej
+*_pch.h.cpp
+*_resource.rc
+*.qm
+.#*
+*.*#
+core
+!core/
+tags
+.DS_Store
+.directory
+Makefile*
+*.prl
+*.app
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+Thumbs.db
+*.res
+*.rc
+.qmake.cache
+.qmake.stash
+object_script*
+
+# xemacs temporary files
+*.flc
+
+# Vim temporary files
+.*.swp
+
+# Python byte code
+*.pyc
