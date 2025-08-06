@@ -15,10 +15,21 @@ using namespace Net;
 ExampleServer::ExampleServer(Net::ConnectionSettings serverSettings, QObject* parent)
     : QObject{parent}
 {
+    RegLoggerThreadWorker::instantiateRegLogger(qApp->applicationDirPath());
+    m_regId_general = RegLogger::instance().addFile("log_server");
+
+    auto log_lambda = [this](QString msg){
+        RegLogger::instance().logData(this->m_regId_general, msg);
+        qWarning(qUtf8Printable(QDateTime::currentDateTimeUtc().toString("[yyyy.MM.dd-hh:mm:ss.zzz]") + msg));
+    };
+    f_logGeneral = log_lambda;
+    f_logError = f_logGeneral;
+
     using namespace std::placeholders;
     m_server = std::get<0>(Net::instantiateWaitThreadedConnection<TcpServer>());
     m_server->setAllowAllAddresses(true);
     m_server->setCallbackFunction(std::bind(&ExampleServer::parseRequest, this, _1, _2, _3));
+    m_server->setLoggingFunctions(f_logGeneral, f_logError);
 
     m_server->setAuthorizationEnabled(true);
     m_server->addLoginDataQueued(Net::LoginData{QStringLiteral("Chuck"), QStringLiteral("Norris")});

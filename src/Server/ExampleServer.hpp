@@ -17,8 +17,9 @@ public:
 private:
     TcpServer* m_server;
 
-    void f_logGeneral(QString) { return; } // TODO
-    void f_logError(QString) { return; }
+    uint m_regId_general = 0;
+    std::function<void(QString)> f_logGeneral = [](QString msg) { qInfo(qUtf8Printable(QDateTime::currentDateTimeUtc().toString(QStringLiteral("[yyyy.MM.dd-hh:mm:ss.zzz]")) + msg)); };
+    std::function<void(QString)> f_logError = [](QString msg) { qWarning(qUtf8Printable(QDateTime::currentDateTimeUtc().toString(QStringLiteral("[yyyy.MM.dd-hh:mm:ss.zzz]")) + msg)); };
 
 private:
     void parseRequest(QByteArray msg, NetConnection* const, Net::AddressPort addrPort);

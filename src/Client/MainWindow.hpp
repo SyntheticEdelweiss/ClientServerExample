@@ -21,6 +21,10 @@ private:
 
     const QString m_datetimeFormat{"[yyyy.MM.dd-hh:mm:ss.zzz]"};
 
+    uint m_regId_general = 0;
+    std::function<void(QString)> f_logGeneral = [](QString msg) { qInfo(qUtf8Printable(QDateTime::currentDateTimeUtc().toString(QStringLiteral("[yyyy.MM.dd-hh:mm:ss.zzz]")) + msg)); };
+    std::function<void(QString)> f_logError = [](QString msg) { qWarning(qUtf8Printable(QDateTime::currentDateTimeUtc().toString(QStringLiteral("[yyyy.MM.dd-hh:mm:ss.zzz]")) + msg)); };
+
 private:
     void loadSettings();
 

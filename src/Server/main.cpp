@@ -1,12 +1,14 @@
 #include <QtCore/QCommandLineOption>
 #include <QtCore/QCommandLineParser>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QDir>
 
 #include "ExampleServer.hpp"
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     QCoreApplication a(argc, argv);
+    QDir::setCurrent(qApp->applicationDirPath());
 
     QCommandLineParser cmdParser;
     cmdParser.addHelpOption();

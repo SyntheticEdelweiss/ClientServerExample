@@ -11,6 +11,7 @@
 #include <QtWidgets/QMessageBox>
 
 #include "Common/Protocol.hpp"
+#include "Common/RegLogger.hpp"
 #include "Net/NetHeaders.hpp"
 
 #include "./ui_MainWindow.h"
@@ -35,6 +36,16 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
+    RegLoggerThreadWorker::instantiateRegLogger(qApp->applicationDirPath());
+    m_regId_general = RegLogger::instance().addFile("log_client");
+
+    auto log_lambda = [this](QString msg){
+        RegLogger::instance().logData(this->m_regId_general, msg);
+        qWarning(qUtf8Printable(QDateTime::currentDateTimeUtc().toString("[yyyy.MM.dd-hh:mm:ss.zzz]") + msg));
+    };
+    f_logGeneral = log_lambda;
+    f_logError = f_logGeneral;
+
     ui->setupUi(this);
 
     ui->comboBox_funcGraph_equation->addItem("Linear", QVariant::fromValue(EquationType::Linear));
@@ -50,6 +61,7 @@ MainWindow::MainWindow(QWidget* parent)
     });
     m_client->setAuthorizationEnabled(true);
     m_client->setLoginData(Net::LoginData{QStringLiteral("Chuck"), QStringLiteral("Norris")});
+    m_client->setLoggingFunctions(f_logGeneral, f_logError);
 
     loadSettings();
 
