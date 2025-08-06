@@ -48,6 +48,8 @@ MainWindow::MainWindow(QWidget* parent)
             parseResponse(arg1, arg2, arg3);
         }, Qt::QueuedConnection);
     });
+    m_client->setAuthorizationEnabled(true);
+    m_client->setLoginData(Net::LoginData{QStringLiteral("Chuck"), QStringLiteral("Norris")});
 
     loadSettings();
 

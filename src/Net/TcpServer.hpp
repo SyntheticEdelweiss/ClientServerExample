@@ -17,6 +17,7 @@ public:
         QTcpSocket* pSocket = nullptr;
         Net::AddressPort peerAddrPort;
         Net::AddressPort localAddrPort;
+        Net::LoginData loginData;
     };
 
 protected:
@@ -35,9 +36,15 @@ protected: // members
     QHash<QTcpSocket*, std::shared_ptr<ClientData>> m_clientMap; // need to keep Data as pointer for polymorphic access // should be unique_ptr, but QHash requires copy-able value
     QHash<Net::AddressPort, ClientData*> m_clientByPeerAddressPort;
     QHash<QHostAddress, QHash<quint16, ClientData*>> m_clientsByPeerAddress;
+    QHash<QString, ClientData*> m_clientsByLoginUsername;
 
     QSet<QHostAddress> m_allowedAddresses;
     bool m_isAllowAllAdresses = true;
+
+    QSet<Net::LoginData> m_loginData;
+    bool m_isAuthorizationEnabled = false;
+    QMap<QTcpSocket*, std::shared_ptr<QTimer>> m_socketAuthMap;
+    const int m_authTimeoutTime = 3000;
 
     QHash<QTcpSocket*, Net::PendingMessage> m_pendingMsgBySocket;
     decltype(Net::PendingMessage::pendingSize) m_headerSize = sizeof(m_headerSize);
@@ -52,6 +59,10 @@ public: // methods
     void setAllowAllAddresses(bool isAllowed) { m_isAllowAllAdresses = isAllowed; }
     bool getIsClientConnected(const Net::AddressPort addrPort);
 
+    void setAuthorizationEnabled(bool isEnabled);
+    void addLoginData(Net::LoginData loginData);
+    void removeLoginData(Net::LoginData loginData);
+
 protected:
     qint64 sendMessageTo(QByteArray msg, QTcpSocket* pClientSocket);
 
@@ -62,6 +73,7 @@ public slots:
     qint64 sendMessageTo(QByteArray msg, QHostAddress address, quint16 port);
     qint64 sendMessageTo(QByteArray msg, Net::AddressPort addressPort);
     qint64 sendMessageTo(QByteArray msg, QHostAddress address);
+    qint64 sendMessageTo(QByteArray msg, QString loginUsername);
 
     void addAllowedAddress(QHostAddress addr);
     void removeAllowedAddress(QHostAddress addr);
@@ -80,9 +92,14 @@ signals:
     void sendMessageToQueued(QByteArray msg, QHostAddress address, quint16 port);
     void sendMessageToQueued(QByteArray msg, Net::AddressPort addressPort);
     void sendMessageToQueued(QByteArray msg, QHostAddress address);
+    void sendMessageToQueued(QByteArray msg, QString loginUsername);
 
     void addAllowedAddressQueued(QHostAddress addr);
     void removeAllowedAddressQueued(QHostAddress addr);
+
+    void addLoginDataQueued(Net::LoginData loginData);
+    void removeLoginDataQueued(Net::LoginData loginData);
+    void clientAuthorized(QString username, Net::AddressPort addrPort);
 
     void readPartialDone(QByteArray msg, QDateTime dt = QDateTime::currentDateTimeUtc()) const;
 };

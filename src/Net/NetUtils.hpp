@@ -43,6 +43,8 @@ namespace ConnectionType
 constexpr quint8 IncorrectType        = 0;
 constexpr quint8 TcpServer            = 3;
 constexpr quint8 TcpClient            = 4;
+constexpr quint8 SslServer            = 5;
+constexpr quint8 SslClient            = 6;
 }
 
 enum class ConnectionState
@@ -94,6 +96,28 @@ struct PendingMessage
 };
 
 
+struct LoginData
+{
+    QString username;
+    QString password;
+};
+inline bool operator==(const Net::LoginData& lhv, const Net::LoginData& rhv)
+{
+    return (lhv.username == rhv.username) && (lhv.password == rhv.password);
+}
+inline uint qHash(const LoginData& key, uint seed = 0)
+{
+    return qHash(key.username, seed) ^ qHash(key.password, seed << 1);
+}
+inline QDataStream& operator<<(QDataStream& stream, const LoginData& data)
+{
+    return (stream << data.username << data.password);
+}
+inline QDataStream& operator>>(QDataStream& stream, LoginData& data)
+{
+    return (stream >> data.username >> data.password);
+}
+
 template<typename T>
 QString toQString(QList<T> const& a_list, QString const& delimiter)
 {
@@ -111,3 +135,4 @@ QList<AddressPort> addressPortListFromQString(const QString &s);
 Q_DECLARE_METATYPE(Net::ConnectionState)
 Q_DECLARE_METATYPE(Net::AddressPort)
 Q_DECLARE_METATYPE(Net::ConnectionSettings)
+Q_DECLARE_METATYPE(Net::LoginData)

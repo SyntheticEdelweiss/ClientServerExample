@@ -4,8 +4,6 @@ project(Net VERSION 1.0 LANGUAGES CXX)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../global.cmake)
 
 
-
-
 set(PROJECT_SOURCES    
     NetConnection.hpp NetConnection.cpp
     NetHeaders.hpp NetHeaders.cpp

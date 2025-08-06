@@ -10,6 +10,7 @@ class TcpClient : public NetConnection
     Q_OBJECT
 protected:
     TcpClient(const quint8 _connType, const QString _connTypeName, QObject* parent = nullptr);
+    inline virtual QTcpSocket* createSocket() { return (new QTcpSocket(this)); }
 
 public:
     TcpClient(QObject* parent = nullptr) : TcpClient(Net::ConnectionType::TcpClient, "TcpClient", parent) {}
@@ -30,8 +31,11 @@ protected: // members
     int m_reconnectInterval = 60000; // msec
     int m_waitForConnectedInterval = 10000; // msec
 
+    Net::LoginData m_loginData;
+    bool m_isAuthorizationEnabled = false;
+
 public: // methods
-    void printConnectionInfo() const final;
+    virtual void printConnectionInfo() const override;
 
     QAbstractSocket::SocketState getSocketState() const { return m_pTcpSocket->state(); }
     QString getLastErrorString() const final { return m_pTcpSocket->errorString(); }
@@ -39,18 +43,21 @@ public: // methods
 
     void setEnableReconnect(bool isEnabled);
     void setWaitTimes(int reconnectInterval, int waitForConnectedInterval);
+    void setLoginData(Net::LoginData a_loginData);
+    void setAuthorizationEnabled(bool isEnabled);
 
 public slots:
-    Net::ConnectionState openConnection(Net::ConnectionSettings const& a_connectionSettings) final;
-    void closeConnection() final;
-    qint64 sendMessage(const QByteArray& msg) final;
+    virtual Net::ConnectionState openConnection(Net::ConnectionSettings const& a_connectionSettings) override;
+    virtual void closeConnection() override;
+    virtual qint64 sendMessage(const QByteArray& msg) override;
 
 protected slots:
-    void readReceived() final;
+    virtual void readReceived() override;
     void printError() const final;
-    void tryConnectToHost();
+    virtual void tryConnectToHost();
     void onConnected();
     void onDisconnected();
+    void authorize();
 
 signals:
     void readPartialDone(const QByteArray& msg, const QDateTime& dt = QDateTime::currentDateTimeUtc()) const;

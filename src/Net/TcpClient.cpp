@@ -6,8 +6,9 @@ using namespace Net;
 
 TcpClient::TcpClient(const quint8 _connType, const QString _connTypeName, QObject* parent)
     : NetConnection(_connType, _connTypeName, parent)
-    , m_pTcpSocket(new QTcpSocket(this))
+    , m_pTcpSocket(createSocket())
 {
+    // m_pTcpSocket = a_socket ? a_socket : new QTcpSocket(this);
     connect(m_pTcpSocket, &QTcpSocket::connected,    this, &TcpClient::onConnected);
     connect(m_pTcpSocket, &QTcpSocket::disconnected, this, &TcpClient::onDisconnected);
     connect(m_pTcpSocket, &QTcpSocket::readyRead,    this, &TcpClient::readReceived);
@@ -76,6 +77,7 @@ void TcpClient::tryConnectToHost()
     {
         emit openedConnection(true);
         m_reconnectTimer->stop();
+        authorize();
     }
     else
     {
@@ -122,6 +124,16 @@ void TcpClient::onDisconnected()
                  .arg(m_pTcpSocket->peerPort()));
     if (m_isReconnectEnabled && m_pTcpSocket->state() != QAbstractSocket::ConnectedState)
         m_reconnectTimer->start(m_reconnectInterval);
+}
+
+void TcpClient::authorize()
+{
+    if (!m_isAuthorizationEnabled)
+        return;
+    QByteArray msg;
+    MAKE_QDATASTREAM_NET(stream, &msg, QIODevice::WriteOnly);
+    stream << m_loginData;
+    sendMessage(msg);
 }
 
 void TcpClient::readReceived()
@@ -174,6 +186,26 @@ void TcpClient::setWaitTimes(int reconnectInterval, int waitForConnectedInterval
     m_waitForConnectedInterval = waitForConnectedInterval;
     // reconnectTimer is singleShot and calls start(m_reconnectInterval) each time, so calling QTimer::setInterval here is not required
     // QTimer::singleShot(0, this, [this](){ m_reconnectTimer->setInterval(m_reconnectInterval); }); // queued call in case caller's thread != timer's thread
+}
+
+void TcpClient::setLoginData(Net::LoginData a_loginData)
+{
+    if (m_connectionState == Net::ConnectionState::Created)
+    {
+        f_logGeneral(QString("%1: called setLoginData() while connection is open - action forbidden").arg(nameId()));
+        return;
+    }
+    m_loginData = a_loginData;
+}
+
+void TcpClient::setAuthorizationEnabled(bool isEnabled)
+{
+    if (m_connectionState == Net::ConnectionState::Created)
+    {
+        f_logGeneral(QString("%1: called setAuthorizationEnabled() while connection is open - action forbidden").arg(nameId()));
+        return;
+    }
+    m_isAuthorizationEnabled = isEnabled;
 }
 
 Net::ConnectionSettings TcpClient::getConnectionSettingsActive() const

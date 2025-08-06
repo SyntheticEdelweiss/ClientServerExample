@@ -12,8 +12,11 @@ TcpServer::TcpServer(const quint8 _connType, const QString _connTypeName, QObjec
     connect(this, qOverload<QByteArray, QHostAddress, quint16>(&TcpServer::sendMessageToQueued), this, qOverload<QByteArray, QHostAddress, quint16>(&TcpServer::sendMessageTo), Qt::QueuedConnection);
     connect(this, qOverload<QByteArray, Net::AddressPort>(&TcpServer::sendMessageToQueued), this, qOverload<QByteArray, Net::AddressPort>(&TcpServer::sendMessageTo), Qt::QueuedConnection);
     connect(this, qOverload<QByteArray, QHostAddress>(&TcpServer::sendMessageToQueued), this, qOverload<QByteArray, QHostAddress>(&TcpServer::sendMessageTo), Qt::QueuedConnection);
+    connect(this, qOverload<QByteArray, QString>(&TcpServer::sendMessageToQueued), this, qOverload<QByteArray, QString>(&TcpServer::sendMessageTo), Qt::QueuedConnection);
     connect(this, &TcpServer::addAllowedAddressQueued, this, &TcpServer::addAllowedAddress, Qt::QueuedConnection);
     connect(this, &TcpServer::removeAllowedAddressQueued, this, &TcpServer::removeAllowedAddress, Qt::QueuedConnection);
+    connect(this, &TcpServer::addLoginDataQueued, this, &TcpServer::addLoginData, Qt::QueuedConnection);
+    connect(this, &TcpServer::removeLoginDataQueued, this, &TcpServer::removeLoginData, Qt::QueuedConnection);
     connect(m_pServer, &QTcpServer::newConnection, this, &TcpServer::onNewConnection);
 }
 
@@ -78,6 +81,21 @@ void TcpServer::removeAllowedAddress(QHostAddress addr)
         pSocket->close();
 }
 
+void TcpServer::addLoginData(Net::LoginData loginData)
+{
+    m_loginData.insert(loginData);
+}
+
+void TcpServer::removeLoginData(Net::LoginData loginData)
+{
+    m_loginData.remove(loginData);
+    auto iter = m_clientsByLoginUsername.find(loginData.username);
+    if (iter != m_clientsByLoginUsername.end())
+    {
+        iter.value()->pSocket->abort();
+    }
+}
+
 void TcpServer::onNewConnection()
 {
     while (m_pServer->hasPendingConnections())
@@ -97,17 +115,27 @@ void TcpServer::onNewConnection()
             }
         }
 
+        if (m_isAuthorizationEnabled)
         {
+            auto timer = make_shared<QTimer>(this);
+            m_socketAuthMap.insert(pSocket, timer);
+            timer->setInterval(m_authTimeoutTime);
+            timer->setSingleShot(true);
+            connect(timer.get(), &QTimer::timeout, pSocket, &QTcpSocket::close);
+            timer->start();
         }
+        else
+        {
+            auto ptr = make_shared<ClientData>();
+            ClientData* d = ptr.get();
+            d->pSocket = pSocket;
+            d->peerAddrPort = Net::AddressPort{pSocket->peerAddress(), pSocket->peerPort()};
+            d->localAddrPort = Net::AddressPort{pSocket->localAddress(), pSocket->localPort()};
 
-        ClientData* d = new ClientData;
-        d->pSocket = pSocket;
-        d->peerAddrPort = Net::AddressPort{pSocket->peerAddress(), pSocket->peerPort()};
-        d->localAddrPort = Net::AddressPort{pSocket->localAddress(), pSocket->localPort()};
-
-        m_clientMap.insert(pSocket, std::shared_ptr<std::remove_pointer_t<decltype(d)>>(d));
-        m_clientByPeerAddressPort.insert({pSocket->peerAddress(), pSocket->peerPort()}, d);
-        m_clientsByPeerAddress[pSocket->peerAddress()].insert(pSocket->peerPort(), d);
+            m_clientMap.insert(pSocket, ptr);
+            m_clientByPeerAddressPort.insert({pSocket->peerAddress(), pSocket->peerPort()}, d);
+            m_clientsByPeerAddress[pSocket->peerAddress()].insert(pSocket->peerPort(), d);
+        }
         connect(pSocket, &QTcpSocket::readyRead, this, &TcpServer::readReceived);
         connect(pSocket, &QTcpSocket::disconnected, this, &TcpServer::onSocketDisconnected);
         connect(pSocket, qOverload<QAbstractSocket::SocketError>(&QAbstractSocket::error), this, &TcpServer::printSocketError);
@@ -180,26 +208,63 @@ qint64 TcpServer::sendMessageTo(QByteArray msg, QHostAddress address)
     return ret;
 }
 
+qint64 TcpServer::sendMessageTo(QByteArray msg, QString loginUsername)
+{
+    auto iter = m_clientsByLoginUsername.find(loginUsername);
+    if (iter == m_clientsByLoginUsername.end())
+    {
+        f_logError(QString("%1: can't send message to unauthorized client username=%2.")
+                     .arg(nameId())
+                     .arg(loginUsername));
+        return -1;
+    }
+    return sendMessageTo(msg, iter.value()->pSocket);
+}
+
 void TcpServer::onSocketDisconnected()
 {
     QTcpSocket* pSocket = qobject_cast<QTcpSocket*>(sender());
     auto iterClient = m_clientMap.find(pSocket);
-    const ClientData& d = *(iterClient.value());
-    emit clientDisconnected(d.peerAddrPort);
-    f_logGeneral(QString("%1: client %2:%3 (local %4:%5) disconnected")
-                 .arg(nameId())
-                 .arg(d.peerAddrPort.addr.toString())
-                 .arg(d.peerAddrPort.port)
-                 .arg(d.localAddrPort.addr.toString())
-                 .arg(d.localAddrPort.port));
-    m_clientByPeerAddressPort.remove(d.peerAddrPort);
-    auto iterByAddr = m_clientsByPeerAddress.find(d.peerAddrPort.addr);
-    iterByAddr.value().remove(d.peerAddrPort.port);
-    if (iterByAddr.value().isEmpty())
-        m_clientsByPeerAddress.erase(iterByAddr);
-    m_clientMap.erase(iterClient);
-    m_pendingMsgBySocket.remove(pSocket);
+    if (iterClient != m_clientMap.end()) // socket was authorized
+    {
+        const ClientData& d = *(iterClient.value());
+        emit clientDisconnected(d.peerAddrPort);
+        QString logText = (getConnectionState() == Net::ConnectionState::Created)
+                ? QString("%1: client %2:%3 (local %4:%5)%7 disconnected") // server is open, disconnect was initiated by client
+                : QString("%1: disconnected client %2:%3 (local %4:%5)%7"); // server is closed, disconnect was initiated by server
+        f_logGeneral(logText
+                     .arg(nameId())
+                     .arg(d.peerAddrPort.addr.toString())
+                     .arg(d.peerAddrPort.port)
+                     .arg(d.localAddrPort.addr.toString())
+                     .arg(d.localAddrPort.port)
+                     .arg(m_isAuthorizationEnabled ? QStringLiteral(" (username=%1)").arg(d.loginData.username) : QString{}));
+        m_clientByPeerAddressPort.remove(d.peerAddrPort);
+        auto iterByAddr = m_clientsByPeerAddress.find(d.peerAddrPort.addr);
+        iterByAddr.value().remove(d.peerAddrPort.port);
+        if (iterByAddr.value().isEmpty())
+            m_clientsByPeerAddress.erase(iterByAddr);
+        m_clientsByLoginUsername.remove(d.loginData.username);
+        m_pendingMsgBySocket.remove(pSocket);
+        m_clientMap.erase(iterClient);
+        pSocket->deleteLater();
+    }
+    else if (m_isAuthorizationEnabled) // socket was not authorized
+    {
+        auto iterTimer = m_socketAuthMap.find(pSocket);
+        iterTimer.value()->stop();
+        m_socketAuthMap.erase(iterTimer);
+
+        QString logText = (getConnectionState() == Net::ConnectionState::Created)
+                ? QString("%1: disconnected unauthorized client(%3:%4)") // server is open, disconnect was initiated by client
+                : QString("%1: unauthorized client(%3:%4) disconnected"); // server is closed, disconnect was initiated by server
+        f_logGeneral(logText
+                     .arg(nameId())
+                     .arg(pSocket->peerAddress().toString())
+                     .arg(pSocket->peerPort()));
+    }
     pSocket->deleteLater();
+    return;
 }
 
 void TcpServer::readReceived()
@@ -231,6 +296,72 @@ void TcpServer::readReceived()
         emit readDone(pendingMsg.msg);
         pendingMsg.curPos = 0;
         pendingMsg.pendingSize = 0;
+        if (m_isAuthorizationEnabled)
+        {
+            auto iterTimer = m_socketAuthMap.find(pSocket);
+            if (iterTimer != m_socketAuthMap.end()) // client is not authorized
+            {
+                MAKE_QDATASTREAM_NET(stream, &pendingMsg.msg, QIODevice::ReadOnly);
+                Net::LoginData loginData;
+                stream >> loginData;
+                if (stream.status() != QDataStream::Ok)
+                {
+                    f_logGeneral(QString("%1: received corrupted data from unauthorized client(%3:%4)")
+                                 .arg(nameId())
+                                 .arg(pSocket->peerAddress().toString())
+                                 .arg(pSocket->peerPort()));
+                    pSocket->abort();
+                    return;
+                }
+
+                if (m_clientsByLoginUsername.contains(loginData.username))
+                {
+                    f_logGeneral(QString("%1: received login data from unauthorized client(%3:%4) for already authorized client")
+                                 .arg(nameId())
+                                 .arg(pSocket->peerAddress().toString())
+                                 .arg(pSocket->peerPort()));
+                    pSocket->abort();
+                    return;
+                }
+
+                if (!m_loginData.contains(loginData))
+                {
+                    f_logGeneral(QString("%1: received invalid login data from unauthorized client(%3:%4)")
+                                 .arg(nameId())
+                                 .arg(pSocket->peerAddress().toString())
+                                 .arg(pSocket->peerPort()));
+                    pSocket->abort();
+                    return;
+                }
+
+                iterTimer.value()->stop();
+                m_socketAuthMap.erase(iterTimer);
+
+                auto ptr = make_shared<ClientData>();
+                ClientData* d = ptr.get();
+                d->pSocket = pSocket;
+                d->peerAddrPort = Net::AddressPort{pSocket->peerAddress(), pSocket->peerPort()};
+                d->localAddrPort = Net::AddressPort{pSocket->localAddress(), pSocket->localPort()};
+                d->loginData = loginData;
+
+                m_clientMap.insert(pSocket, ptr);
+                m_clientByPeerAddressPort.insert({pSocket->peerAddress(), pSocket->peerPort()}, d);
+                m_clientsByPeerAddress[pSocket->peerAddress()].insert(pSocket->peerPort(), d);
+
+                m_clientsByLoginUsername.insert(d->loginData.username, d);
+
+                emit clientAuthorized(d->loginData.username, d->peerAddrPort);
+                f_logGeneral(QString("%1: client %2:%3 (local %4:%5) sockd:%6 authorized as username=%7")
+                             .arg(nameId())
+                             .arg(pSocket->peerAddress().toString())
+                             .arg(pSocket->peerPort())
+                             .arg(pSocket->localAddress().toString())
+                             .arg(pSocket->localPort())
+                             .arg(pSocket->socketDescriptor())
+                             .arg(d->loginData.username));
+                continue;
+            }
+        }
         f_onReceivedMessage(pendingMsg.msg, this, {pSocket->peerAddress(), pSocket->peerPort()});
     }
     return;
@@ -251,6 +382,17 @@ bool TcpServer::getIsClientConnected(const Net::AddressPort addrPort)
         return false;
     return true;
 }
+
+void TcpServer::setAuthorizationEnabled(bool isEnabled)
+{
+    if (m_connectionState == Net::ConnectionState::Created)
+    {
+        f_logGeneral(QString("%1: called setAuthorizationEnabled() while connection is open - action forbidden").arg(nameId()));
+        return;
+    }
+    m_isAuthorizationEnabled = isEnabled;
+}
+
 
 void TcpServer::printConnectionInfo() const
 {

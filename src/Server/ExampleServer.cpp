@@ -19,6 +19,10 @@ ExampleServer::ExampleServer(Net::ConnectionSettings serverSettings, QObject* pa
     m_server = std::get<0>(Net::instantiateWaitThreadedConnection<TcpServer>());
     m_server->setAllowAllAddresses(true);
     m_server->setCallbackFunction(std::bind(&ExampleServer::parseRequest, this, _1, _2, _3));
+
+    m_server->setAuthorizationEnabled(true);
+    m_server->addLoginDataQueued(Net::LoginData{QStringLiteral("Chuck"), QStringLiteral("Norris")});
+
     Net::openWaitThreadedConnection(m_server, serverSettings);
 }
 

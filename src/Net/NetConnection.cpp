@@ -7,11 +7,13 @@ NetConnection::NetConnection(const quint8 _connType, const QString _connTypeName
     , m_connectionType(_connType)
     , m_connectionTypeName(_connTypeName)
 {
-    qRegisterMetaType<QAbstractSocket::SocketState>("QAbstractSocket::SocketState");
-    qRegisterMetaType<Net::ConnectionSettings>("Net::ConnectionSettings");
-    qRegisterMetaType<Net::AddressPort>("Net::AddressPort");
     qRegisterMetaType<QHostAddress>("QHostAddress");
+    qRegisterMetaType<QAbstractSocket::SocketState>("QAbstractSocket::SocketState");
     qRegisterMetaType<QAbstractSocket::SocketError>("QAbstractSocket::SocketError");
+    qRegisterMetaType<Net::ConnectionState>("Net::ConnectionState");
+    qRegisterMetaType<Net::AddressPort>("Net::AddressPort");
+    qRegisterMetaType<Net::ConnectionSettings>("Net::ConnectionSettings");
+    qRegisterMetaType<Net::LoginData>("Net::LoginData");
 
     m_pCallbackThreadContextHelper = new QObject;
 
