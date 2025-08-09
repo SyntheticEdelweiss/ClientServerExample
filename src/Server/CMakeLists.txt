@@ -10,7 +10,7 @@ set(PROJECT_SOURCES
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
-find_package(Qt5 REQUIRED COMPONENTS Core)
+find_package(Qt5 REQUIRED COMPONENTS Core Concurrent)
 target_link_directories(${PROJECT_NAME} PRIVATE
     # ../
 )
@@ -18,6 +18,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Common
     Net
     Qt5::Core
+    Qt5::Concurrent
 )
 
 include(GNUInstallDirs)

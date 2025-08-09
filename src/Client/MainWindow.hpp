@@ -2,8 +2,12 @@
 
 #include <QtCore/QString>
 #include <QtWidgets/QMainWindow>
+#include <QtWidgets/QProgressDialog>
 
+#include "Common/Protocol.hpp"
 #include "Net/TcpClient.hpp"
+
+#include "PersistentProgressDialog.hpp"
 
 namespace Ui { class MainWindow; }
 
@@ -19,6 +23,10 @@ public:
 private:
     TcpClient* m_client;
 
+    bool m_isAwaitingCancel = false;
+    bool m_isAwaitingTask = false;
+    PersistentProgressDialog* m_progressDialog = nullptr;
+
     const QString m_datetimeFormat{"[yyyy.MM.dd-hh:mm:ss.zzz]"};
 
     uint m_regId_general = 0;
@@ -27,12 +35,19 @@ private:
 
 private:
     void loadSettings();
+    void saveSettings();
+    void showErrorMessage(QString errorText);
+    void sendRequestToServer(const Protocol::Request* req);
+    void resetAwaitingState();
 
 private slots:
     void closeEvent(QCloseEvent* event) final;
 
     void onAppSettings();
+    void onClear();
     void onSendRequest();
+    void onSendCancel();
+    void onCorruptedMessage(QByteArray msg);
 
     void onEquationTypeChanged();
 

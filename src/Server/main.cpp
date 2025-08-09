@@ -2,12 +2,14 @@
 #include <QtCore/QCommandLineParser>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
+#include <QtCore/QThreadPool>
 
 #include "ExampleServer.hpp"
 
 int main(int argc, char* argv[])
 {
     QCoreApplication a(argc, argv);
+    qDebug(QStringLiteral("main thread: QThread(0x%1)").arg(reinterpret_cast<quintptr>(QThread::currentThread()), 0, 16, QLatin1Char('0')).toStdString().c_str());
     QDir::setCurrent(qApp->applicationDirPath());
 
     QCommandLineParser cmdParser;
@@ -23,11 +25,17 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    Net::ConnectionSettings serverSettings;
-    serverSettings.ipLocal.setAddress(posArgs.at(0));
-    serverSettings.portIn = posArgs.at(1).toUInt();
-    ExampleServer server(serverSettings);
-    Q_UNUSED(server);
+    QThreadPool::globalInstance()->setMaxThreadCount(8);
+
+    QTimer::singleShot(0, [posArgs](){
+        Net::ConnectionSettings serverSettings;
+        serverSettings.ipLocal.setAddress(posArgs.at(0));
+        serverSettings.portIn = posArgs.at(1).toUInt();
+        ExampleServer* server = new ExampleServer(serverSettings);
+        QObject::connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, [server](){
+            delete server;
+        });
+    });
 
     return a.exec();
 }

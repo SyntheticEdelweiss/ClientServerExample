@@ -26,22 +26,59 @@ inline QString toQString(EquationType data)
     }
 }
 
+enum class ErrorCode : uint
+{
+    Unspecified = 0,
+    CorruptedData,
+    InvalidRequestType,
+    AlreadyRunningTask,
+    NotRunningAnyTask,
+};
+inline QString toQString(ErrorCode code)
+{
+    switch (code)
+    {
+    case ErrorCode::CorruptedData: { return QStringLiteral("Received message with corrupted data"); }
+    case ErrorCode::InvalidRequestType: { return QStringLiteral("Received message with invalid request type"); }
+    case ErrorCode::AlreadyRunningTask: { return QStringLiteral("Received task request while already running task"); }
+    case ErrorCode::NotRunningAnyTask: { return QStringLiteral("Received CancelCurrentTask while not running any task"); }
+    case ErrorCode::Unspecified: [[fallthrough]];
+    default: { return {}; }
+    }
+}
+
 
 enum class RequestType
 {
-    Invalid = 0,
+    InvalidRequest = 0,
     SortArray,
     FindPrimeNumbers,
     CalculateFunction,
+    CancelCurrentTask,
 
-    StopCurrentOperation,
+    ProgressRange,
+    ProgressValue,
 };
+inline QString toQString(RequestType d)
+{
+    switch (d)
+    {
+    case RequestType::InvalidRequest: { return QStringLiteral("InvalidRequest"); }
+    case RequestType::SortArray: { return QStringLiteral("SortArray"); }
+    case RequestType::FindPrimeNumbers: { return QStringLiteral("FindPrimeNumbers"); }
+    case RequestType::CalculateFunction: { return QStringLiteral("CalculateFunction"); }
+    case RequestType::CancelCurrentTask: { return QStringLiteral("CancelCurrentTask"); }
+    case RequestType::ProgressRange: { return QStringLiteral("ProgressRange"); }
+    case RequestType::ProgressValue: { return QStringLiteral("ProgressValue"); }
+    default: { return {}; }
+    }
+}
 
 struct Request
 {
-    RequestType type{RequestType::Invalid};
+    RequestType type{RequestType::InvalidRequest};
 
-    explicit Request(RequestType a_reqType = RequestType::Invalid) : type(a_reqType) {}
+    explicit Request(RequestType a_reqType = RequestType::InvalidRequest) : type(a_reqType) {}
     virtual ~Request() = default;
 
     friend QDataStream& operator<<(QDataStream& stream, const Request& data);
@@ -55,6 +92,18 @@ struct Request
 inline QDataStream& operator<<(QDataStream& stream, const Request& data) { return data.serialize(stream); }
 inline QDataStream& operator>>(QDataStream& stream, Request& data) { return data.deserialize(stream); }
 
+struct Request_InvalidRequest : public Request
+{
+    ErrorCode errorCode{ErrorCode::Unspecified};
+    QString errorText;
+
+    Request_InvalidRequest() : Request(RequestType::InvalidRequest) {}
+    virtual ~Request_InvalidRequest() = default;
+
+    virtual QDataStream& serialize(QDataStream& stream) const final;
+    virtual QDataStream& deserialize(QDataStream& stream) final;
+};
+
 struct Request_SortArray : public Request
 {
     QVector<int> numbers;
@@ -62,25 +111,25 @@ struct Request_SortArray : public Request
     Request_SortArray() : Request(RequestType::SortArray) {}
     virtual ~Request_SortArray() = default;
 
-    QDataStream& serialize(QDataStream& stream) const final;
-    QDataStream& deserialize(QDataStream& stream) final;
+    virtual QDataStream& serialize(QDataStream& stream) const final;
+    virtual QDataStream& deserialize(QDataStream& stream) final;
     QJsonObject toJson() const;
     static Request_SortArray fromJson(const QJsonObject& json);
 };
 
-struct Request_PrimeNumbers : public Request
+struct Request_FindPrimeNumbers : public Request
 {
     int x_from;
     int x_to;
     QVector<int> primeNumbers;
 
-    Request_PrimeNumbers() : Request(RequestType::FindPrimeNumbers) {}
-    virtual ~Request_PrimeNumbers() = default;
+    Request_FindPrimeNumbers() : Request(RequestType::FindPrimeNumbers) {}
+    virtual ~Request_FindPrimeNumbers() = default;
 
-    QDataStream& serialize(QDataStream& stream) const final;
-    QDataStream& deserialize(QDataStream& stream) final;
+    virtual QDataStream& serialize(QDataStream& stream) const final;
+    virtual QDataStream& deserialize(QDataStream& stream) final;
     QJsonObject toJson() const;
-    static Request_PrimeNumbers fromJson(const QJsonObject& json);
+    static Request_FindPrimeNumbers fromJson(const QJsonObject& json);
 };
 
 struct Request_CalculateFunction : public Request
@@ -97,54 +146,43 @@ struct Request_CalculateFunction : public Request
     Request_CalculateFunction() : Request(RequestType::CalculateFunction) {}
     virtual ~Request_CalculateFunction() = default;
 
-    QDataStream& serialize(QDataStream& stream) const final;
-    QDataStream& deserialize(QDataStream& stream) final;
+    virtual QDataStream& serialize(QDataStream& stream) const final;
+    virtual QDataStream& deserialize(QDataStream& stream) final;
     QJsonObject toJson() const;
     static Request_CalculateFunction fromJson(const QJsonObject& json);
 };
 
-
-enum class ResponseType
+struct Request_CancelCurrentTask : public Request
 {
-    Invalid = 0,
-    ProgressUpdate
+    Request_CancelCurrentTask() : Request(RequestType::CancelCurrentTask) {}
+    virtual ~Request_CancelCurrentTask() = default;
 };
 
-struct Response
+struct Request_ProgressRange : public Request
 {
-    ResponseType type;
-    bool success;
-    QString message;
+    int minimum = 0;
+    int maximum = 0;
 
-    explicit Response(ResponseType a_resType = ResponseType::Invalid) : type(a_resType) {}
-    virtual ~Response() = default;
+    Request_ProgressRange() : Request(RequestType::ProgressRange) {}
+    virtual ~Request_ProgressRange() = default;
 
-    friend QDataStream& operator<<(QDataStream& stream, const Response& data);
-    friend QDataStream& operator>>(QDataStream& stream, Response& data);
-    virtual QDataStream& serialize(QDataStream& stream) const;
-    virtual QDataStream& deserialize(QDataStream& stream);
-    QJsonObject toJson() const;
-    static Response fromJson(const QJsonObject& json);
+    virtual QDataStream& serialize(QDataStream& stream) const final;
+    virtual QDataStream& deserialize(QDataStream& stream) final;
 };
-inline QDataStream& operator<<(QDataStream& stream, const Response& data) { return data.serialize(stream); }
-inline QDataStream& operator>>(QDataStream& stream, Response& data) { return data.deserialize(stream); }
 
-struct Response_ProgressUpdate : public Response
+struct Request_ProgressValue : public Request
 {
-    int cur;
-    int max;
+    int value = 0;
 
-    explicit Response_ProgressUpdate(ResponseType a_resType = ResponseType::ProgressUpdate) : Response(a_resType) {}
-    virtual ~Response_ProgressUpdate() = default;
+    Request_ProgressValue() : Request(RequestType::ProgressValue) {}
+    virtual ~Request_ProgressValue() = default;
 
-    QDataStream& serialize(QDataStream& stream) const final;
-    QDataStream& deserialize(QDataStream& stream) final;
-    QJsonObject toJson() const;
-    static Response_ProgressUpdate fromJson(const QJsonObject& json);
+    virtual QDataStream& serialize(QDataStream& stream) const final;
+    virtual QDataStream& deserialize(QDataStream& stream) final;
 };
 
 }  // namespace Protocol
 
-Q_DECLARE_METATYPE(Protocol::RequestType)
-Q_DECLARE_METATYPE(Protocol::ResponseType)
 Q_DECLARE_METATYPE(Protocol::EquationType)
+Q_DECLARE_METATYPE(Protocol::ErrorCode)
+Q_DECLARE_METATYPE(Protocol::RequestType)

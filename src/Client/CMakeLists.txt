@@ -7,16 +7,18 @@ set(PROJECT_SOURCES
     main.cpp    
     MainWindow.hpp MainWindow.cpp MainWindow.ui
     AppSettings.hpp AppSettings.cpp AppSettings.ui
+    PersistentProgressDialog.hpp PersistentProgressDialog.cpp
     # Client.qrc
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets Charts)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Charts)
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Common
     Net
     Qt5::Core
+    Qt5::Gui
     Qt5::Widgets
     Qt5::Charts
 )

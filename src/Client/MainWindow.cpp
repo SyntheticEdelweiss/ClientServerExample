@@ -12,6 +12,7 @@
 
 #include "Common/Protocol.hpp"
 #include "Common/RegLogger.hpp"
+#include "Common/Utils.hpp"
 #include "Net/NetHeaders.hpp"
 
 #include "./ui_MainWindow.h"
@@ -23,6 +24,7 @@ using namespace Protocol;
 
 QT_CHARTS_USE_NAMESPACE
 
+// should correspond to tabWidget index in ui
 enum class TaskIndex
 {
     ArraySorting = 0,
@@ -48,6 +50,40 @@ MainWindow::MainWindow(QWidget* parent)
 
     ui->setupUi(this);
 
+    // setup QChartView
+    {
+        auto series = new QLineSeries;
+        auto chart = new QChart;
+        chart->addSeries(series);
+        auto axisX = new QValueAxis(chart);
+        auto axisY = new QValueAxis(chart);
+        chart->addAxis(axisX, Qt::AlignBottom);
+        chart->addAxis(axisY, Qt::AlignLeft);
+        series->attachAxis(axisX);
+        series->attachAxis(axisY);
+        // Connect series updates to auto-scaling slots
+        connect(series, &QXYSeries::pointsReplaced, this, [axisX, axisY, series] {
+            auto pts = series->pointsVector();
+            if (pts.isEmpty())
+                return;
+            auto [minX, maxX] = std::minmax_element(pts.begin(), pts.end(), [](auto& a, auto& b) { return a.x() < b.x(); });
+            auto [minY, maxY] = std::minmax_element(pts.begin(), pts.end(), [](auto& a, auto& b) { return a.y() < b.y(); });
+            axisX->setRange(minX->x(), maxX->x());
+            axisY->setRange(minY->y(), maxY->y());
+        });
+        chart->legend()->setVisible(true);
+        chart->legend()->setAlignment(Qt::AlignBottom);
+        chart->setAnimationOptions(QChart::NoAnimation);
+        ui->chartView_funcGraph_chart->setChart(chart);
+        ui->chartView_funcGraph_chart->setRenderHint(QPainter::Antialiasing);
+    }
+
+    // setup progress dialog
+    {
+        m_progressDialog = new PersistentProgressDialog(this);
+        QObject::connect(m_progressDialog, &QProgressDialog::canceled, this, &MainWindow::onSendCancel);
+    }
+
     ui->comboBox_funcGraph_equation->addItem("Linear", QVariant::fromValue(EquationType::Linear));
     ui->comboBox_funcGraph_equation->addItem("Quadratic", QVariant::fromValue(EquationType::Quadratic));
 
@@ -72,32 +108,17 @@ MainWindow::MainWindow(QWidget* parent)
     connect(ui->pushButton_arraySorting_generate, &QPushButton::pressed, this, &MainWindow::onGenerateArray);
 
     connect(ui->pushButton_sendRequest, &QPushButton::pressed, this, &MainWindow::onSendRequest);
+    connect(ui->pushButton_clear, &QPushButton::pressed, this, &MainWindow::onClear);
     connect(ui->comboBox_funcGraph_equation, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::onEquationTypeChanged);
 
     QMetaObject::invokeMethod(this, [this](){
         Net::reopenWaitThreadedConnection(m_client, m_client->getConnectionSettings());
     }, Qt::QueuedConnection);
+    onEquationTypeChanged();
 }
 
 MainWindow::~MainWindow()
 {
-    QSettings settingsFile(g_settingsPath, QSettings::IniFormat, this);
-    settingsFile.beginGroup("Geometry");
-    auto geo = this->geometry();
-    settingsFile.setValue("x", geo.x());
-    settingsFile.setValue("y", geo.y());
-    settingsFile.setValue("width", geo.width());
-    settingsFile.setValue("height", geo.height());
-    settingsFile.endGroup();
-
-    settingsFile.beginGroup("Network");
-    auto ns = m_client->getConnectionSettings();
-    settingsFile.setValue("ipLocal", ns.ipLocal.toString());
-    settingsFile.setValue("ipDestination", ns.ipDestination.toString());
-    settingsFile.setValue("portIn", ns.portIn);
-    settingsFile.setValue("portOut", ns.portOut);
-    settingsFile.endGroup();
-
     delete ui;
 }
 
@@ -123,11 +144,29 @@ void MainWindow::loadSettings()
     settingsFile.endGroup();
 }
 
+void MainWindow::saveSettings()
+{
+    QSettings settingsFile(g_settingsPath, QSettings::IniFormat, this);
+    settingsFile.beginGroup("Geometry");
+    auto geo = this->geometry();
+    settingsFile.setValue("x", geo.x());
+    settingsFile.setValue("y", geo.y());
+    settingsFile.setValue("width", geo.width());
+    settingsFile.setValue("height", geo.height());
+    settingsFile.endGroup();
 
-// TODO: shouldn't QMainWindow get deleted anyway without it?
+    settingsFile.beginGroup("Network");
+    auto ns = m_client->getConnectionSettings();
+    settingsFile.setValue("ipLocal", ns.ipLocal.toString());
+    settingsFile.setValue("ipDestination", ns.ipDestination.toString());
+    settingsFile.setValue("portIn", ns.portIn);
+    settingsFile.setValue("portOut", ns.portOut);
+    settingsFile.endGroup();
+}
+
 void MainWindow::closeEvent(QCloseEvent* event)
 {
-    this->deleteLater();
+    saveSettings();
     QMainWindow::closeEvent(event);
 }
 
@@ -143,11 +182,44 @@ void MainWindow::onAppSettings()
     }
 }
 
+void MainWindow::onClear()
+{
+    switch (static_cast<TaskIndex>(ui->tabWidget_tasks->currentIndex()))
+    {
+    case TaskIndex::ArraySorting:
+    {
+        ui->plainTextEdit_arraySorting_initialData->clear();
+        ui->plainTextEdit_arraySorting_resultData->clear();
+        break;
+    }
+    case TaskIndex::PrimeNumbers:
+    {
+        ui->plainTextEdit_primeNumbers_resultData->clear();
+        break;
+    }
+    case TaskIndex::FunctionGraph:
+    {
+        auto chart = ui->chartView_funcGraph_chart->chart();
+        auto series = qobject_cast<QLineSeries*>(chart->series().value(0));
+        series->replace(QVector<QPointF>{});
+        chart->setTitle(QString{});
+        break;
+    }
+    default: { return; }
+    }
+}
+
 void MainWindow::onSendRequest()
 {
     if (m_client->getSocketState() != QAbstractSocket::ConnectedState)
     {
-        QMessageBox::critical(this, tr("Error"), QObject::tr("No connection to server"));
+        showErrorMessage(QObject::tr("No connection to server"));
+        return;
+    }
+    // Don't spam requests
+    if (m_isAwaitingCancel || m_isAwaitingTask)
+    {
+        showErrorMessage(QObject::tr("Can't send request - still awaiting response."));
         return;
     }
 
@@ -159,6 +231,7 @@ void MainWindow::onSendRequest()
         QVector<int> targetArray;
         QString text = ui->plainTextEdit_arraySorting_initialData->document()->toPlainText();
         QStringList textList = text.split(' ', Qt::SkipEmptyParts);
+        // Validate input array by silently removing everything that is not number
         bool isTextInvalid = false;
         for (QString const& s : textList)
         {
@@ -186,15 +259,20 @@ void MainWindow::onSendRequest()
     }
     case TaskIndex::PrimeNumbers:
     {
-        request = make_unique<Request_PrimeNumbers>();
-        auto req = static_cast<Request_PrimeNumbers*>(request.get());
+        request = make_unique<Request_FindPrimeNumbers>();
+        auto req = static_cast<Request_FindPrimeNumbers*>(request.get());
         req->x_from = ui->spinBox_primeNumbers_from->value();
         req->x_to = ui->spinBox_primeNumbers_to->value();
+        // Validation
+        if (req->x_from > req->x_to)
+        {
+            showErrorMessage(QObject::tr("Check input data - data invalid"));
+            return;
+        }
         break;
     }
     case TaskIndex::FunctionGraph:
     {
-        // TODO: set minimum number of points? Validate input?
         request = make_unique<Request_CalculateFunction>();
         auto req = static_cast<Request_CalculateFunction*>(request.get());
         req->equationType = ui->comboBox_funcGraph_equation->currentData(Qt::UserRole).value<EquationType>();
@@ -204,26 +282,54 @@ void MainWindow::onSendRequest()
         req->a = ui->spinBox_funcGraph_constA->value();
         req->b = ui->spinBox_funcGraph_constB->value();
         req->c = ui->spinBox_funcGraph_constC->value();
+        // Validation
+        if (req->x_from > req->x_to || req->x_step < 1 || (req->a | req->b | req->c) == 0)
+        {
+            showErrorMessage(QObject::tr("Check input data - data invalid"));
+            return;
+        }
         break;
     }
     default:
     {
+        Q_CRITICAL_UNREACHABLE();
+        Q_ASSERT(false);
         return;
     }
     }
+    sendRequestToServer(request.get());
 
-    QByteArray msg;
-    MAKE_QDATASTREAM_NET(stream, &msg, QIODevice::ReadWrite);
-    stream << *request;
-    m_client->sendMessageQueued(msg);
-    // send request
-    // block ui?
-    // start progress dialog with early cancel button
+    // Block button while awaiting Task completion
+    ui->pushButton_sendRequest->setEnabled(false);
+}
+
+void MainWindow::onSendCancel()
+{
+    if (m_client->getSocketState() != QAbstractSocket::ConnectedState)
+    {
+        showErrorMessage(QObject::tr("No connection to server"));
+        return;
+    }
+    // Don't spam requests
+    if (m_isAwaitingCancel)
+        return;
+
+    m_isAwaitingCancel = true;
+    Request_CancelCurrentTask req;
+    sendRequestToServer(&req);
 }
 
 void MainWindow::onEquationTypeChanged()
 {
-    ui->label_funcGraph_equation->setText(toQString(ui->comboBox_funcGraph_equation->currentData(Qt::UserRole).value<EquationType>()));
+    auto lambda_etString = [](Protocol::EquationType data){
+        switch (data)
+        {
+        case EquationType::Linear: { return "a*x + b"; }
+        case EquationType::Quadratic: { return "a*x^2 + b*x + c"; }
+        default: { return "Invalid"; }
+        }
+    };
+    ui->label_funcGraph_equation->setText(lambda_etString(ui->comboBox_funcGraph_equation->currentData(Qt::UserRole).value<EquationType>()));
 }
 
 void MainWindow::onGenerateArray()
@@ -232,6 +338,14 @@ void MainWindow::onGenerateArray()
     auto x_from = ui->spinBox_arraySorting_from->value();
     auto x_to = ui->spinBox_arraySorting_to->value();
     auto x_count = ui->spinBox_arraySorting_count->value();
+
+    // Validation
+    if (x_from >= x_to || x_count < 2)
+    {
+        showErrorMessage(QObject::tr("Can't generate array - invalid parameters"));
+        return;
+    }
+
     std::uniform_int_distribution<> dist(x_from, x_to);
     QString text;
     text.reserve(x_count * sizeof(x_count));
@@ -244,43 +358,79 @@ void MainWindow::onGenerateArray()
     ui->plainTextEdit_arraySorting_initialData->setPlainText(text);
 }
 
-void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::AddressPort addrPort)
+void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::AddressPort)
 {
     Request request;
     MAKE_QDATASTREAM_NET(streamMsg, &msg, QIODevice::ReadOnly);
     streamMsg >> request;
     if (streamMsg.status() != QDataStream::Ok)
     {
-
+        onCorruptedMessage(msg);
         return;
     }
 
+    // There's gonna be a lot of progress updates, no need to mention them
+    if (request.type != RequestType::ProgressRange && request.type != RequestType::ProgressValue)
+        f_logGeneral(QStringLiteral("Received %1 response").arg(toQString(request.type)));
+
     switch (request.type)
     {
+    case RequestType::InvalidRequest:
+    {
+        Request_InvalidRequest req;
+        streamMsg.device()->seek(0);
+        streamMsg >> req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg);
+            return;
+        }
+
+        // Should be a better way to determine if reset should be called. Maybe prompt user and then force cancel or restart connection?
+        if (req.errorCode != Protocol::ErrorCode::AlreadyRunningTask)
+            resetAwaitingState();
+        showErrorMessage(req.errorText.isEmpty() ? toQString(req.errorCode) : req.errorText);
+        break;
+
+    }
     case RequestType::SortArray:
     {
         Request_SortArray req;
         streamMsg.device()->seek(0);
         streamMsg >> req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg);
+            return;
+        }
 
         QString text;
+        text.reserve(6 * req.numbers.size());
         for (auto item : req.numbers)
             text.append(QString::number(item) + ' ');
         text.chop(1);
         ui->plainTextEdit_arraySorting_resultData->setPlainText(text);
+        resetAwaitingState();
         break;
     }
     case RequestType::FindPrimeNumbers:
     {
-        Request_PrimeNumbers req;
+        Request_FindPrimeNumbers req;
         streamMsg.device()->seek(0);
         streamMsg >> req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg);
+            return;
+        }
 
         QString text;
+        text.reserve(6 * req.primeNumbers.size());
         for (auto item : req.primeNumbers)
             text.append(QString::number(item) + ' ');
         text.chop(1);
         ui->plainTextEdit_primeNumbers_resultData->setPlainText(text);
+        resetAwaitingState();
         break;
     }
     case RequestType::CalculateFunction:
@@ -288,28 +438,71 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
         Request_CalculateFunction req;
         streamMsg.device()->seek(0);
         streamMsg >> req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg);
+            return;
+        }
 
-        QLineSeries* series = new QLineSeries();
-        for (auto item : qAsConst(req.points)) // normally, would just use QList<QPointF> instead of QVector<int>
-            series->append(QPointF(item));
+        QVector<QPointF> points; // should really just use QPointF in Request
+        points.reserve(req.points.size());
+        for (auto const& point : qAsConst(req.points))
+            points.push_back(QPointF{point});
 
-        QChart* chart = new QChart();
-        chart->addSeries(series);
+        auto chart = ui->chartView_funcGraph_chart->chart();
+        auto series = qobject_cast<QLineSeries*>(chart->series().value(0));
+        series->replace(points);
         chart->setTitle(QStringLiteral("%1 function chart").arg(toQString(req.equationType)));
-        chart->createDefaultAxes();
-        chart->legend()->setVisible(true);
-        chart->legend()->setAlignment(Qt::AlignBottom);
-        chart->setAnimationOptions(QChart::NoAnimation);
 
-        ui->chartView_funcGraph_chart->setChart(chart);
-        ui->chartView_funcGraph_chart->setRenderHint(QPainter::Antialiasing);
+        resetAwaitingState();
+        break;
+    }
+    case RequestType::ProgressRange:
+    {
+        Request_ProgressRange req;
+        streamMsg.device()->seek(0);
+        streamMsg >> req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg);
+            return;
+        }
+
+        m_progressDialog->setRange(req.minimum, req.maximum);
+        break;
+    }
+    case RequestType::ProgressValue:
+    {
+        Request_ProgressValue req;
+        streamMsg.device()->seek(0);
+        streamMsg >> req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg);
+            return;
+        }
+
+        m_progressDialog->setValue(req.value);
+        break;
+    }
+    case RequestType::CancelCurrentTask:
+    {
+        resetAwaitingState();
         break;
     }
     default:
     {
+        QString errorText(QStringLiteral("Received message with incorrect RequestType"));
+        f_logError(QString("%1: %2").arg(errorText).arg(QString::fromLatin1(msg.toHex())));
         return;
     }
     }
+}
+
+void MainWindow::onCorruptedMessage(QByteArray msg)
+{
+    QString errorText(QStringLiteral("Received message with corrupted data"));
+    f_logError(QString("%1: %2").arg(errorText).arg(QString::fromLatin1(msg.toHex())));
 }
 
 void MainWindow::indicateLastUpdated()
@@ -359,6 +552,33 @@ void MainWindow::indicateConnectionState(const QAbstractSocket::SocketState& soc
 
 void MainWindow::onSocketStateChanged(const QAbstractSocket::SocketState& socketState)
 {
+    // Reset awating state in case connection was lost
+    if (socketState == QAbstractSocket::UnconnectedState)
+    {
+        resetAwaitingState();
+    }
     indicateConnectionState(socketState);
     indicateLastUpdated();
+}
+
+void MainWindow::showErrorMessage(QString errorText)
+{
+    QMessageBox::critical(this, tr("Error"), errorText);
+}
+
+void MainWindow::sendRequestToServer(const Protocol::Request* req)
+{
+    QByteArray msg;
+    MAKE_QDATASTREAM_NET(stream, &msg, QIODevice::WriteOnly);
+    stream << *req;
+    m_client->sendMessageQueued(msg);
+    f_logGeneral(QStringLiteral("Sent %1 request").arg(toQString(req->type)));
+}
+
+void MainWindow::resetAwaitingState()
+{
+    m_progressDialog->reset();
+    ui->pushButton_sendRequest->setEnabled(true);
+    m_isAwaitingCancel = false;
+    m_isAwaitingTask = false;
 }

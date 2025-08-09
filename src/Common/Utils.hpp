@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tuple>
 #include <type_traits>
 
 #include <QtCore/QJsonArray>
@@ -7,6 +8,8 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonParseError>
 #include <QtCore/QJsonValue>
+#include <QtCore/QVector>
+#include <QtGlobal>
 
 
 #ifdef _WIN32
@@ -31,7 +34,8 @@
 #define c_cast(type, var) \
     (type)((var))
 
-
+#define Q_CRITICAL_UNREACHABLE() \
+    qCritical(__FILE__ ":" __STRINGIFY(__LINE__) " should be unreachable.");
 
 template<typename T>
 class IsQVariantConvertible
@@ -69,4 +73,22 @@ bool parseJsonVar(const QJsonObject& curObject, QString curValueName, T& targetV
     }
     targetVar = curValue.toVariant().value<T>();
     return true;
+}
+
+QVector<std::tuple<int, int>> divideIntoChunks(int x_from, int x_to, int max_chunk_count, int min_chunk_size = 1);
+
+template<typename T>
+QVector<QVector<T>> divideIntoChunks(QVector<T> container, int max_chunk_count, int min_chunk_size)
+{
+    QVector<QVector<T>> subcontainers;
+    auto indexRanges = divideIntoChunks(0, container.size() - 1, max_chunk_count, min_chunk_size);
+    if (indexRanges.isEmpty())
+        return {};
+    for (auto const& indexRange : indexRanges)
+    {
+        auto indexStart = std::get<0>(indexRange);
+        auto indexEnd = std::get<1>(indexRange) + 1;
+        subcontainers.append(QVector<T>{container.begin() + indexStart, container.begin() + indexEnd});
+    }
+    return subcontainers;
 }

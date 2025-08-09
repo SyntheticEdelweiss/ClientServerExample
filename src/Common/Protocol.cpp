@@ -34,6 +34,21 @@ Request Request::fromJson(const QJsonObject& jsonObject)
     return Request{};
 }
 
+QDataStream& Request_InvalidRequest::serialize(QDataStream& stream) const
+{
+    Request::serialize(stream);
+    stream << errorCode;
+    stream << errorText;
+    return stream;
+}
+QDataStream& Request_InvalidRequest::deserialize(QDataStream& stream)
+{
+    Request::deserialize(stream);
+    stream >> errorCode;
+    stream >> errorText;
+    return stream;
+}
+
 QDataStream& Request_SortArray::serialize(QDataStream& stream) const
 {
     Request::serialize(stream);
@@ -47,7 +62,7 @@ QDataStream& Request_SortArray::deserialize(QDataStream& stream)
     return stream;
 }
 
-QDataStream& Request_PrimeNumbers::serialize(QDataStream& stream) const
+QDataStream& Request_FindPrimeNumbers::serialize(QDataStream& stream) const
 {
     Request::serialize(stream);
     stream << x_from;
@@ -55,7 +70,7 @@ QDataStream& Request_PrimeNumbers::serialize(QDataStream& stream) const
     stream << primeNumbers;
     return stream;
 }
-QDataStream& Request_PrimeNumbers::deserialize(QDataStream& stream)
+QDataStream& Request_FindPrimeNumbers::deserialize(QDataStream& stream)
 {
     Request::deserialize(stream);
     stream >> x_from;
@@ -118,6 +133,34 @@ Request_CalculateFunction Request_CalculateFunction::fromJson(const QJsonObject&
 
     goto_parseError:;
     return Request_CalculateFunction{};
+}
+
+QDataStream& Request_ProgressRange::serialize(QDataStream& stream) const
+{
+    Request::serialize(stream);
+    stream << minimum;
+    stream << maximum;
+    return stream;
+}
+QDataStream& Request_ProgressRange::deserialize(QDataStream& stream)
+{
+    Request::deserialize(stream);
+    stream >> minimum;
+    stream >> maximum;
+    return stream;
+}
+
+QDataStream& Request_ProgressValue::serialize(QDataStream& stream) const
+{
+    Request::serialize(stream);
+    stream << value;
+    return stream;
+}
+QDataStream& Request_ProgressValue::deserialize(QDataStream& stream)
+{
+    Request::deserialize(stream);
+    stream >> value;
+    return stream;
 }
 
 }  // namespace Protocol

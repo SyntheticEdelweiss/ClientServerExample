@@ -18,7 +18,7 @@
     <item row="0" column="0">
      <widget class="QTabWidget" name="tabWidget_tasks">
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="tab_sortArray">
        <attribute name="title">
@@ -31,6 +31,9 @@
            <string>Initial data</string>
           </property>
           <layout class="QGridLayout" name="gridLayout_3">
+           <item row="1" column="0" colspan="2">
+            <widget class="QPlainTextEdit" name="plainTextEdit_arraySorting_initialData"/>
+           </item>
            <item row="0" column="0">
             <widget class="QGroupBox" name="groupBox_2">
              <property name="title">
@@ -90,29 +93,6 @@
             </widget>
            </item>
            <item row="0" column="1">
-            <widget class="QGroupBox" name="groupBox_3">
-             <property name="title">
-              <string>From file</string>
-             </property>
-             <layout class="QGridLayout" name="gridLayout_5">
-              <item row="0" column="0">
-               <widget class="QLabel" name="label_4">
-                <property name="text">
-                 <string/>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="0">
-               <widget class="QPushButton" name="pushButton_arraySorting_pickFile">
-                <property name="text">
-                 <string>Pick file</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item row="0" column="2">
             <spacer name="horizontalSpacer">
              <property name="orientation">
               <enum>Qt::Horizontal</enum>
@@ -124,9 +104,6 @@
               </size>
              </property>
             </spacer>
-           </item>
-           <item row="1" column="0" colspan="3">
-            <widget class="QPlainTextEdit" name="plainTextEdit_arraySorting_initialData"/>
            </item>
           </layout>
          </widget>
@@ -398,6 +375,13 @@
         <widget class="QPushButton" name="pushButton_sendRequest">
          <property name="text">
           <string>Send request</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="pushButton_clear">
+         <property name="text">
+          <string>Clear</string>
          </property>
         </widget>
        </item>
