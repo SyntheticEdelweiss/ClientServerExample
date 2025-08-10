@@ -82,6 +82,7 @@ MainWindow::MainWindow(Net::LoginData loginData, QWidget* parent)
     {
         m_progressDialog = new PersistentProgressDialog(this);
         QObject::connect(m_progressDialog, &QProgressDialog::canceled, this, &MainWindow::onSendCancel);
+        m_progressDialog->reset();
     }
 
     ui->comboBox_funcGraph_equation->addItem("Linear", QVariant::fromValue(EquationType::Linear));

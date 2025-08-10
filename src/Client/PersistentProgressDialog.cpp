@@ -23,7 +23,7 @@ void PersistentProgressDialog::init()
     setWindowFlags(windowFlags() & ~Qt::WindowCloseButtonHint & ~Qt::WindowContextHelpButtonHint);
     setMinimumDuration(1000);
     // QProgressDialog constructor starts a timer connected to forceShow() slot, with only way to prevent unnecessary show() is to fulfill forceShow() early return condition
-    QProgressDialog::cancel();
+    // QProgressDialog::reset();
     // Need to disconnect original cancel and instead connect redefined one
     QObject::disconnect(this, &QProgressDialog::canceled, 0, 0);
     // Setting labelText here because cancel() can be called to no avail, while actual cancelation is tied to canceled() signal
