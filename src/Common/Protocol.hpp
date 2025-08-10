@@ -59,9 +59,9 @@ enum class RequestType
     ProgressRange,
     ProgressValue,
 };
-inline QString toQString(RequestType d)
+inline QString toQString(RequestType data)
 {
-    switch (d)
+    switch (data)
     {
     case RequestType::InvalidRequest: { return QStringLiteral("InvalidRequest"); }
     case RequestType::SortArray: { return QStringLiteral("SortArray"); }
@@ -86,8 +86,11 @@ struct Request
 
     virtual QDataStream& serialize(QDataStream& stream) const;
     virtual QDataStream& deserialize(QDataStream& stream);
+    QJsonObject& serialize(QJsonObject& jsonObject) const;
+    QJsonObject& deserialize(QJsonObject& jsonObject);
     QJsonObject toJson() const;
     static Request fromJson(const QJsonObject& json);
+    virtual int byteSize();
 };
 inline QDataStream& operator<<(QDataStream& stream, const Request& data) { return data.serialize(stream); }
 inline QDataStream& operator>>(QDataStream& stream, Request& data) { return data.deserialize(stream); }
@@ -115,6 +118,7 @@ struct Request_SortArray : public Request
     virtual QDataStream& deserialize(QDataStream& stream) final;
     QJsonObject toJson() const;
     static Request_SortArray fromJson(const QJsonObject& json);
+    virtual int byteSize() override;
 };
 
 struct Request_FindPrimeNumbers : public Request
@@ -130,6 +134,7 @@ struct Request_FindPrimeNumbers : public Request
     virtual QDataStream& deserialize(QDataStream& stream) final;
     QJsonObject toJson() const;
     static Request_FindPrimeNumbers fromJson(const QJsonObject& json);
+    virtual int byteSize() override;
 };
 
 struct Request_CalculateFunction : public Request
@@ -150,6 +155,7 @@ struct Request_CalculateFunction : public Request
     virtual QDataStream& deserialize(QDataStream& stream) final;
     QJsonObject toJson() const;
     static Request_CalculateFunction fromJson(const QJsonObject& json);
+    virtual int byteSize() override;
 };
 
 struct Request_CancelCurrentTask : public Request

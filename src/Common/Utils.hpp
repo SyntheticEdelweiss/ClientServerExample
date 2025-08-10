@@ -37,6 +37,20 @@
 #define Q_CRITICAL_UNREACHABLE() \
     qCritical(__FILE__ ":" __STRINGIFY(__LINE__) " should be unreachable.");
 
+
+inline quint64 hash64_FNV1a(const QByteArray& data)
+{
+    constexpr quint64 FNV_offset = 1'469'598'103'934'665'603ull;
+    constexpr quint64 FNV_prime = 1'099'511'628'211ull;
+    quint64 hash = FNV_offset;
+    for (auto byte : data)
+    {
+        hash ^= static_cast<quint8>(byte);
+        hash *= FNV_prime;
+    }
+    return hash;
+}
+
 template<typename T>
 class IsQVariantConvertible
 {

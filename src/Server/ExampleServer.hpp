@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 
+#include <QtCore/QCache>
 #include <QtCore/QFutureWatcher>
 #include <QtCore/QObject>
 #include <QtCore/QPoint>
@@ -17,9 +18,10 @@
 // template of same type as QFutureWatcher? But then to hold task itself there should be base task and shared_ptr...
 struct Task
 {
-    std::shared_ptr<Protocol::Request> request;
-    std::shared_ptr<QFutureWatcherBase> futureWatcher;
+    std::unique_ptr<Protocol::Request> request;
+    std::unique_ptr<QFutureWatcherBase> futureWatcher;
     Net::AddressPort addrPort;
+    quint64 rmsgHash{0}; // not the best place for it, but easier to keep it here
 };
 
 class ExampleServer : public QObject
@@ -32,6 +34,8 @@ private:
     TcpServer* m_server;
 
     QHash<Net::AddressPort, std::shared_ptr<Task>> m_taskMap;
+
+    QCache<quint64, Protocol::Request> m_cache;
 
     const QString m_dtFormat{QStringLiteral("[yyyy.MM.dd-hh:mm:ss.zzz]")};
     uint m_regId_general = 0;

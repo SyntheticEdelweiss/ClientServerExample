@@ -27,6 +27,9 @@ ExampleServer::ExampleServer(Net::ConnectionSettings serverSettings, QObject* pa
     f_logGeneral = log_lambda;
     f_logError = f_logGeneral;
 
+    // Using byteSize of Request as cost
+    m_cache.setMaxCost(std::numeric_limits<int>::max());
+
     using namespace std::placeholders;
     m_server = std::get<0>(Net::instantiateWaitThreadedConnection<TcpServer>());
     m_server->setAllowAllAddresses(true);
@@ -77,6 +80,12 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
                 Request_CancelCurrentTask req;
                 sendRequestToClient(&req, task->addrPort); // canceled() is emitted before finished() -> still safe to access task here
             }
+            else
+            {
+                // should be safe to release it at that point, since task is about to be deleted anyway
+                Request* r = task->request.release();
+                m_cache.insert(task->rmsgHash, r, r->byteSize());
+            }
             m_taskMap.remove(task->addrPort);
         });
         QObject::connect(fw, &QFutureWatcherBase::progressRangeChanged, [this, task](int minimum, int maximum) {
@@ -101,6 +110,22 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         return;
     }
 
+    quint64 msgHash;
+    // check cached requests first
+    if (request.type != RequestType::CancelCurrentTask)
+    {
+        // easiest way is to hash QByteArray
+        msgHash = hash64_FNV1a(msg);
+        auto* req = m_cache[msgHash];
+        // since requests store incoming data too, might as well do extra checks?
+        if (req != nullptr)
+        {
+            f_logGeneral(QStringLiteral("Fetched cached result for task %1 for %2").arg(toQString(req->type)).arg(toQString(addrPort)));
+            sendRequestToClient(req, addrPort);
+            return;
+        }
+    }
+
     switch (request.type)
     {
     case RequestType::SortArray:
@@ -111,7 +136,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
             return;
         }
         constexpr RequestType ReqT = RequestType::SortArray;
-        auto req = make_shared<RStMapper_t<ReqT>>();
+        auto req = make_unique<RStMapper_t<ReqT>>();
         streamMsg.device()->seek(0);
         streamMsg >> *req;
         if (streamMsg.status() != QDataStream::Ok)
@@ -125,8 +150,9 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         auto iter = m_taskMap.insert(addrPort, make_shared<Task>());
         Task* task = iter.value().get();
         task->request = std::move(req);
-        task->futureWatcher = make_shared<RFWMapper_t<ReqT>>();
+        task->futureWatcher = make_unique<RFWMapper_t<ReqT>>();
         task->addrPort = addrPort;
+        task->rmsgHash = msgHash;
         auto* fw = watcher_cast<ReqT>(task->futureWatcher.get());
         QObject::connect(fw, &QFutureWatcherBase::finished, this, [this, task]() {
             constexpr RequestType ReqT = RequestType::SortArray;
@@ -159,7 +185,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
             return;
         }
         constexpr RequestType ReqT = RequestType::FindPrimeNumbers;
-        auto req = make_shared<RStMapper_t<ReqT>>();
+        auto req = make_unique<RStMapper_t<ReqT>>();
         streamMsg.device()->seek(0);
         streamMsg >> *req;
         if (streamMsg.status() != QDataStream::Ok)
@@ -173,8 +199,9 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         auto iter = m_taskMap.insert(addrPort, make_shared<Task>());
         Task* task = iter.value().get();
         task->request = std::move(req);
-        task->futureWatcher = make_shared<RFWMapper_t<ReqT>>();
+        task->futureWatcher = make_unique<RFWMapper_t<ReqT>>();
         task->addrPort = addrPort;
+        task->rmsgHash = msgHash;
         auto* fw = watcher_cast<ReqT>(task->futureWatcher.get());
         QObject::connect(fw, &QFutureWatcherBase::finished, this, [this, task]() {
             constexpr RequestType ReqT = RequestType::FindPrimeNumbers;
@@ -200,7 +227,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
             return;
         }
         constexpr RequestType ReqT = RequestType::CalculateFunction;
-        auto req = make_shared<RStMapper_t<ReqT>>();
+        auto req = make_unique<RStMapper_t<ReqT>>();
         streamMsg.device()->seek(0);
         streamMsg >> *req;
         if (streamMsg.status() != QDataStream::Ok)
@@ -220,8 +247,9 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         auto iter = m_taskMap.insert(addrPort, make_shared<Task>());
         Task* task = iter.value().get();
         task->request = std::move(req);
-        task->futureWatcher = make_shared<RFWMapper_t<ReqT>>();
+        task->futureWatcher = make_unique<RFWMapper_t<ReqT>>();
         task->addrPort = addrPort;
+        task->rmsgHash = msgHash;
         auto* fw = watcher_cast<ReqT>(task->futureWatcher.get());
         QObject::connect(fw, &QFutureWatcherBase::finished, this, [this, task]() {
             constexpr RequestType ReqT = RequestType::CalculateFunction;
@@ -242,7 +270,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
     case RequestType::CancelCurrentTask:
     {
         constexpr RequestType ReqT = RequestType::CancelCurrentTask;
-        auto req = make_shared<RStMapper_t<ReqT>>();
+        auto req = make_unique<RStMapper_t<ReqT>>();
         streamMsg.device()->seek(0);
         streamMsg >> *req;
         if (streamMsg.status() != QDataStream::Ok)

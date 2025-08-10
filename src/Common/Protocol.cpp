@@ -20,18 +20,20 @@ QJsonObject Request::toJson() const
 {
     QVariantMap result;
     result.insert("type", under_cast(type));
-    // result.insert("data", data);
     return QJsonObject::fromVariantMap(result);
 }
 Request Request::fromJson(const QJsonObject& jsonObject)
 {
     Request request;
     if (!parseJsonVar(jsonObject, "type", request.type)) goto goto_parseError;
-    // if (!parseJsonVar(jsonObject, "data", request.data)) goto goto_parseError;
     return request;
 
     goto_parseError:;
     return Request{};
+}
+int Request::byteSize()
+{
+    return sizeof(type);
 }
 
 QDataStream& Request_InvalidRequest::serialize(QDataStream& stream) const
@@ -61,6 +63,12 @@ QDataStream& Request_SortArray::deserialize(QDataStream& stream)
     stream >> numbers;
     return stream;
 }
+int Request_SortArray::byteSize()
+{
+    int res = Request::byteSize();
+    res += numbers.size();
+    return res;
+}
 
 QDataStream& Request_FindPrimeNumbers::serialize(QDataStream& stream) const
 {
@@ -77,6 +85,12 @@ QDataStream& Request_FindPrimeNumbers::deserialize(QDataStream& stream)
     stream >> x_to;
     stream >> primeNumbers;
     return stream;
+}
+int Request_FindPrimeNumbers::byteSize()
+{
+    int res = Request::byteSize();
+    res += primeNumbers.size() * sizeof(decltype(primeNumbers)::value_type);
+    return res;
 }
 
 QDataStream& Request_CalculateFunction::serialize(QDataStream& stream) const
@@ -133,6 +147,19 @@ Request_CalculateFunction Request_CalculateFunction::fromJson(const QJsonObject&
 
     goto_parseError:;
     return Request_CalculateFunction{};
+}
+int Request_CalculateFunction::byteSize()
+{
+    int res = Request::byteSize();
+    res += sizeof(equationType);
+    res += sizeof(x_from);
+    res += sizeof(x_to);
+    res += sizeof(x_step);
+    res += sizeof(a);
+    res += sizeof(b);
+    res += sizeof(c);
+    res += points.size() * sizeof(decltype(points)::value_type);
+    return res;
 }
 
 QDataStream& Request_ProgressRange::serialize(QDataStream& stream) const
