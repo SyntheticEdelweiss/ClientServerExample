@@ -14,6 +14,8 @@ using namespace std;
 using namespace Protocol;
 using namespace Net;
 
+const QString g_settingsPath{"./ServerSettings.ini"};
+
 ExampleServer::ExampleServer(Net::ConnectionSettings serverSettings, QObject* parent)
     : QObject{parent}
 {
@@ -43,12 +45,34 @@ ExampleServer::ExampleServer(Net::ConnectionSettings serverSettings, QObject* pa
     m_server->setLoggingFunctions(f_logGeneral, f_logError);
 
     m_server->setAuthorizationEnabled(true);
-    m_server->addLoginDataQueued(Net::LoginData{QStringLiteral("Chuck"), QStringLiteral("Norris")});
+
+    loadSettings();
 
     QObject::connect(m_server, &TcpServer::clientConnected, this, &ExampleServer::onClientConnected);
     QObject::connect(m_server, &TcpServer::clientDisconnected, this, &ExampleServer::onClientDisconnected);
 
     Net::openWaitThreadedConnection(m_server, serverSettings);
+}
+
+void ExampleServer::loadSettings()
+{
+    QSettings settingsFile(g_settingsPath, QSettings::IniFormat, this);
+
+    settingsFile.beginGroup("Users");
+    for (auto const& key : settingsFile.childKeys())
+    {
+        QString username = key;
+        QString password = settingsFile.value(key).toString();
+        m_server->addLoginDataQueued(Net::LoginData{username, password});
+    }
+    settingsFile.endGroup();
+
+    settingsFile.beginGroup("AllowedAddresses");
+    for (auto const& key : settingsFile.childKeys())
+    {
+        m_server->addAllowedAddressQueued(QHostAddress{key});
+    }
+    settingsFile.endGroup();
 }
 
 void ExampleServer::sendRequestToClient(const Protocol::Request* req, Net::AddressPort addrPort)

@@ -34,7 +34,7 @@ enum class TaskIndex
 
 const QString g_settingsPath{"./ClientSettings.ini"};
 
-MainWindow::MainWindow(QWidget* parent)
+MainWindow::MainWindow(Net::LoginData loginData, QWidget* parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
@@ -96,7 +96,7 @@ MainWindow::MainWindow(QWidget* parent)
         }, Qt::QueuedConnection);
     });
     m_client->setAuthorizationEnabled(true);
-    m_client->setLoginData(Net::LoginData{QStringLiteral("Chuck"), QStringLiteral("Norris")});
+    m_client->setLoginData(loginData);
     m_client->setLoggingFunctions(f_logGeneral, f_logError);
 
     loadSettings();

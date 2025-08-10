@@ -46,6 +46,8 @@ private:
     const int m_minChunkSize = 100;
 
 private:
+    void loadSettings();
+
     void sendRequestToClient(const Protocol::Request* req, Net::AddressPort addrPort);
     void sendErrorToClient(Protocol::ErrorCode errorCode, Net::AddressPort addrPort, QString errorText = QString{});
     void parseRequest(QByteArray msg, NetConnection* const, Net::AddressPort addrPort);
