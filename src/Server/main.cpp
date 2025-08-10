@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    QThreadPool::globalInstance()->setMaxThreadCount(8);
+    QThreadPool::globalInstance()->setMaxThreadCount(QThread::idealThreadCount());
 
     QTimer::singleShot(0, [posArgs](){
         Net::ConnectionSettings serverSettings;
