@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Server VERSION 0.1 LANGUAGES CXX)
+project(Server VERSION 1.0 LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../global.cmake)
 
