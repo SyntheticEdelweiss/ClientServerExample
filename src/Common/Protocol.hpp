@@ -11,7 +11,7 @@
 
 namespace Protocol {
 
-enum class EquationType : int
+enum class EquationType : quint8
 {
     Linear,
     Quadratic
@@ -26,7 +26,7 @@ inline QString toQString(EquationType data)
     }
 }
 
-enum class ErrorCode : uint
+enum class ErrorCode : quint8
 {
     Unspecified = 0,
     CorruptedData,
@@ -48,7 +48,7 @@ inline QString toQString(ErrorCode code)
 }
 
 
-enum class RequestType
+enum class RequestType : quint8
 {
     InvalidRequest = 0,
     SortArray,
@@ -86,10 +86,8 @@ struct Request
 
     virtual QDataStream& serialize(QDataStream& stream) const;
     virtual QDataStream& deserialize(QDataStream& stream);
-    QJsonObject& serialize(QJsonObject& jsonObject) const;
-    QJsonObject& deserialize(QJsonObject& jsonObject);
-    QJsonObject toJson() const;
-    static Request fromJson(const QJsonObject& json);
+    virtual void serialize(QJsonObject& target) const;
+    virtual bool deserialize(QJsonObject& target, QString* errorText = nullptr);
     virtual int byteSize();
 };
 inline QDataStream& operator<<(QDataStream& stream, const Request& data) { return data.serialize(stream); }
@@ -105,6 +103,8 @@ struct Request_InvalidRequest : public Request
 
     virtual QDataStream& serialize(QDataStream& stream) const final;
     virtual QDataStream& deserialize(QDataStream& stream) final;
+    virtual void serialize(QJsonObject& target) const final;
+    virtual bool deserialize(QJsonObject& target, QString* errorText = nullptr) final;
 };
 
 struct Request_SortArray : public Request
@@ -116,9 +116,9 @@ struct Request_SortArray : public Request
 
     virtual QDataStream& serialize(QDataStream& stream) const final;
     virtual QDataStream& deserialize(QDataStream& stream) final;
-    QJsonObject toJson() const;
-    static Request_SortArray fromJson(const QJsonObject& json);
-    virtual int byteSize() override;
+    virtual void serialize(QJsonObject& target) const final;
+    virtual bool deserialize(QJsonObject& target, QString* errorText = nullptr) final;
+    virtual int byteSize() final;
 };
 
 struct Request_FindPrimeNumbers : public Request
@@ -132,9 +132,9 @@ struct Request_FindPrimeNumbers : public Request
 
     virtual QDataStream& serialize(QDataStream& stream) const final;
     virtual QDataStream& deserialize(QDataStream& stream) final;
-    QJsonObject toJson() const;
-    static Request_FindPrimeNumbers fromJson(const QJsonObject& json);
-    virtual int byteSize() override;
+    virtual void serialize(QJsonObject& target) const final;
+    virtual bool deserialize(QJsonObject& target, QString* errorText = nullptr) final;
+    virtual int byteSize() final;
 };
 
 struct Request_CalculateFunction : public Request
@@ -153,9 +153,9 @@ struct Request_CalculateFunction : public Request
 
     virtual QDataStream& serialize(QDataStream& stream) const final;
     virtual QDataStream& deserialize(QDataStream& stream) final;
-    QJsonObject toJson() const;
-    static Request_CalculateFunction fromJson(const QJsonObject& json);
-    virtual int byteSize() override;
+    virtual void serialize(QJsonObject& target) const final;
+    virtual bool deserialize(QJsonObject& target, QString* errorText = nullptr) final;
+    virtual int byteSize() final;
 };
 
 struct Request_CancelCurrentTask : public Request
@@ -174,6 +174,8 @@ struct Request_ProgressRange : public Request
 
     virtual QDataStream& serialize(QDataStream& stream) const final;
     virtual QDataStream& deserialize(QDataStream& stream) final;
+    virtual void serialize(QJsonObject& target) const final;
+    virtual bool deserialize(QJsonObject& target, QString* errorText = nullptr) final;
 };
 
 struct Request_ProgressValue : public Request
@@ -185,6 +187,8 @@ struct Request_ProgressValue : public Request
 
     virtual QDataStream& serialize(QDataStream& stream) const final;
     virtual QDataStream& deserialize(QDataStream& stream) final;
+    virtual void serialize(QJsonObject& target) const final;
+    virtual bool deserialize(QJsonObject& target, QString* errorText = nullptr) final;
 };
 
 }  // namespace Protocol

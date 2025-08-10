@@ -53,10 +53,16 @@ ExampleServer::ExampleServer(Net::ConnectionSettings serverSettings, QObject* pa
 
 void ExampleServer::sendRequestToClient(const Protocol::Request* req, Net::AddressPort addrPort)
 {
-    QByteArray resMsg;
-    MAKE_QDATASTREAM_NET(streamRes, &resMsg, QIODevice::WriteOnly);
-    streamRes << *req;
-    m_server->sendMessageToQueued(resMsg, addrPort);
+    QByteArray msg;
+#if defined(MESSAGE_FORMAT_BINARY)
+    MAKE_QDATASTREAM_NET(stream, &msg, QIODevice::WriteOnly);
+    stream << *req;
+#elif defined(MESSAGE_FORMAT_JSON)
+    QJsonObject jsonObject;
+    req->serialize(jsonObject);
+    msg = QJsonDocument(jsonObject).toJson(QJsonDocument::Compact);
+#endif
+    m_server->sendMessageToQueued(msg, addrPort);
 }
 
 void ExampleServer::sendErrorToClient(Protocol::ErrorCode errorCode, Net::AddressPort addrPort, QString errorText)
@@ -102,13 +108,50 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
     };
 
     Request request;
+#if defined(MESSAGE_FORMAT_BINARY)
     MAKE_QDATASTREAM_NET(streamMsg, &msg, QIODevice::ReadOnly);
     streamMsg >> request;
     if (streamMsg.status() != QDataStream::Ok)
     {
-        onCorruptedRequest(msg, addrPort);
+        onCorruptedMessage(msg);
         return;
     }
+
+    auto lambda_unpackRequest = [this, msg, &streamMsg, addrPort](Request* req) -> bool {
+        streamMsg.device()->seek(0);
+        streamMsg >> *req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg, addrPort);
+            return false;
+        }
+        return true;
+    };
+#elif defined(MESSAGE_FORMAT_JSON)
+    auto jsonError = make_unique<QJsonParseError>();
+    auto msgJsonDoc = QJsonDocument::fromJson(msg, jsonError.get());
+    if (msgJsonDoc.isNull())
+    {
+        onCorruptedMessage(msg, addrPort, jsonError->errorString());
+        return;
+    }
+    auto msgJsonObject = msgJsonDoc.object();
+    auto errorText = make_unique<QString>();
+    if (!request.deserialize(msgJsonObject, errorText.get()))
+    {
+        onCorruptedMessage(msg, addrPort, *errorText);
+        return;
+    }
+
+    auto lambda_unpackRequest = [this, msg, &msgJsonObject, &errorText, addrPort](Request* req) -> bool {
+        if (!req->deserialize(msgJsonObject, errorText.get()))
+        {
+            onCorruptedMessage(msg, addrPort, *errorText);
+            return false;
+        }
+        return true;
+    };
+#endif
 
     quint64 msgHash;
     // check cached requests first
@@ -137,13 +180,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         }
         constexpr RequestType ReqT = RequestType::SortArray;
         auto req = make_unique<RStMapper_t<ReqT>>();
-        streamMsg.device()->seek(0);
-        streamMsg >> *req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedRequest(msg, addrPort);
-            return;
-        }
+        if (!lambda_unpackRequest(req.get())) return;
 
         auto sequence = divideIntoChunks(req->numbers, m_maxChunkCount, m_minChunkSize);
 
@@ -186,13 +223,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         }
         constexpr RequestType ReqT = RequestType::FindPrimeNumbers;
         auto req = make_unique<RStMapper_t<ReqT>>();
-        streamMsg.device()->seek(0);
-        streamMsg >> *req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedRequest(msg, addrPort);
-            return;
-        }
+        if (!lambda_unpackRequest(req.get())) return;
 
         auto sequence = divideIntoChunks(req->x_from, req->x_to, m_maxChunkCount, m_minChunkSize);
 
@@ -228,13 +259,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         }
         constexpr RequestType ReqT = RequestType::CalculateFunction;
         auto req = make_unique<RStMapper_t<ReqT>>();
-        streamMsg.device()->seek(0);
-        streamMsg >> *req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedRequest(msg, addrPort);
-            return;
-        }
+        if (!lambda_unpackRequest(req.get())) return;
 
         auto sequence = [&](){
             QVector<std::tuple<Protocol::EquationType, int, int, int, const int, const int, const int>> sequence;
@@ -271,13 +296,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
     {
         constexpr RequestType ReqT = RequestType::CancelCurrentTask;
         auto req = make_unique<RStMapper_t<ReqT>>();
-        streamMsg.device()->seek(0);
-        streamMsg >> *req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedRequest(msg, addrPort);
-            return;
-        }
+        if (!lambda_unpackRequest(req.get())) return;
 
         auto iter = m_taskMap.find(addrPort);
         if (iter == m_taskMap.end())
@@ -303,13 +322,10 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
     }
 }
 
-void ExampleServer::onCorruptedRequest(QByteArray msg, Net::AddressPort addrPort)
+void ExampleServer::onCorruptedMessage(QByteArray msg, Net::AddressPort addrPort, QString errorText)
 {
-    QString errorText(QStringLiteral("Received message with corrupted data"));
-    f_logError(QString("%1: %2").arg(errorText).arg(QString::fromLatin1(msg.toHex())));
-    Request_InvalidRequest response;
-    response.errorText = errorText;
-    sendRequestToClient(&response, addrPort);
+    f_logError(QString("Received message with corrupted data: %1\nmsg:%2").arg(errorText).arg(QString::fromLatin1(msg.toHex())));
+    sendErrorToClient(Protocol::ErrorCode::CorruptedData, addrPort, errorText);
 }
 
 QVector<int> ExampleServer::sortArray(QVector<int> arr)

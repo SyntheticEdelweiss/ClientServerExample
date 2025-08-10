@@ -47,9 +47,9 @@ private:
 
 private:
     void sendRequestToClient(const Protocol::Request* req, Net::AddressPort addrPort);
-    void sendErrorToClient(Protocol::ErrorCode errorCode, Net::AddressPort addrPort, QString errorText = {});
+    void sendErrorToClient(Protocol::ErrorCode errorCode, Net::AddressPort addrPort, QString errorText = QString{});
     void parseRequest(QByteArray msg, NetConnection* const, Net::AddressPort addrPort);
-    void onCorruptedRequest(QByteArray msg, Net::AddressPort addrPort);
+    void onCorruptedMessage(QByteArray msg, Net::AddressPort addrPort, QString errorText = QString{});
 
     static QVector<int> sortArray(QVector<int> arr);
     static void sortArray_reduce(QVector<int>& aggregate, const QVector<int>& part) {

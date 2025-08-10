@@ -47,7 +47,7 @@ private slots:
     void onClear();
     void onSendRequest();
     void onSendCancel();
-    void onCorruptedMessage(QByteArray msg);
+    void onCorruptedMessage(QByteArray msg, QString errorText = QString{});
 
     void onEquationTypeChanged();
 

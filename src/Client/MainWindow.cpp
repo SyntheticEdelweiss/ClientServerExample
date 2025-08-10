@@ -361,6 +361,7 @@ void MainWindow::onGenerateArray()
 void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::AddressPort)
 {
     Request request;
+#if defined(MESSAGE_FORMAT_BINARY)
     MAKE_QDATASTREAM_NET(streamMsg, &msg, QIODevice::ReadOnly);
     streamMsg >> request;
     if (streamMsg.status() != QDataStream::Ok)
@@ -368,6 +369,42 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
         onCorruptedMessage(msg);
         return;
     }
+
+    auto lambda_unpackRequest = [this, msg, &streamMsg](Request* req) -> bool {
+        streamMsg.device()->seek(0);
+        streamMsg >> *req;
+        if (streamMsg.status() != QDataStream::Ok)
+        {
+            onCorruptedMessage(msg);
+            return false;
+        }
+        return true;
+    };
+#elif defined(MESSAGE_FORMAT_JSON)
+    auto jsonError = make_unique<QJsonParseError>();
+    auto msgJsonDoc = QJsonDocument::fromJson(msg, jsonError.get());
+    if (msgJsonDoc.isNull())
+    {
+        onCorruptedMessage(msg, jsonError->errorString());
+        return;
+    }
+    auto msgJsonObject = msgJsonDoc.object();
+    auto errorText = make_unique<QString>();
+    if (!request.deserialize(msgJsonObject, errorText.get()))
+    {
+        onCorruptedMessage(msg, *errorText);
+        return;
+    }
+
+    auto lambda_unpackRequest = [this, msg, &msgJsonObject, &errorText](Request* req) -> bool {
+        if (!req->deserialize(msgJsonObject, errorText.get()))
+        {
+            onCorruptedMessage(msg, *errorText);
+            return false;
+        }
+        return true;
+    };
+#endif
 
     // There's gonna be a lot of progress updates, no need to mention them
     if (request.type != RequestType::ProgressRange && request.type != RequestType::ProgressValue)
@@ -378,13 +415,7 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
     case RequestType::InvalidRequest:
     {
         Request_InvalidRequest req;
-        streamMsg.device()->seek(0);
-        streamMsg >> req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedMessage(msg);
-            return;
-        }
+        if (!lambda_unpackRequest(&req)) return;
 
         // Should be a better way to determine if reset should be called. Maybe prompt user and then force cancel or restart connection?
         if (req.errorCode != Protocol::ErrorCode::AlreadyRunningTask)
@@ -396,13 +427,7 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
     case RequestType::SortArray:
     {
         Request_SortArray req;
-        streamMsg.device()->seek(0);
-        streamMsg >> req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedMessage(msg);
-            return;
-        }
+        if (!lambda_unpackRequest(&req)) return;
 
         QString text;
         text.reserve(6 * req.numbers.size());
@@ -416,13 +441,7 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
     case RequestType::FindPrimeNumbers:
     {
         Request_FindPrimeNumbers req;
-        streamMsg.device()->seek(0);
-        streamMsg >> req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedMessage(msg);
-            return;
-        }
+        if (!lambda_unpackRequest(&req)) return;
 
         QString text;
         text.reserve(6 * req.primeNumbers.size());
@@ -436,13 +455,7 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
     case RequestType::CalculateFunction:
     {        
         Request_CalculateFunction req;
-        streamMsg.device()->seek(0);
-        streamMsg >> req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedMessage(msg);
-            return;
-        }
+        if (!lambda_unpackRequest(&req)) return;
 
         QVector<QPointF> points; // should really just use QPointF in Request
         points.reserve(req.points.size());
@@ -460,13 +473,7 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
     case RequestType::ProgressRange:
     {
         Request_ProgressRange req;
-        streamMsg.device()->seek(0);
-        streamMsg >> req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedMessage(msg);
-            return;
-        }
+        if (!lambda_unpackRequest(&req)) return;
 
         m_progressDialog->setRange(req.minimum, req.maximum);
         break;
@@ -474,13 +481,7 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
     case RequestType::ProgressValue:
     {
         Request_ProgressValue req;
-        streamMsg.device()->seek(0);
-        streamMsg >> req;
-        if (streamMsg.status() != QDataStream::Ok)
-        {
-            onCorruptedMessage(msg);
-            return;
-        }
+        if (!lambda_unpackRequest(&req)) return;
 
         m_progressDialog->setValue(req.value);
         break;
@@ -499,10 +500,10 @@ void MainWindow::parseResponse(QByteArray msg, NetConnection* const, Net::Addres
     }
 }
 
-void MainWindow::onCorruptedMessage(QByteArray msg)
+void MainWindow::onCorruptedMessage(QByteArray msg, QString errorText)
 {
-    QString errorText(QStringLiteral("Received message with corrupted data"));
-    f_logError(QString("%1: %2").arg(errorText).arg(QString::fromLatin1(msg.toHex())));
+    // Maybe need to cut off msg when it's too big?
+    f_logError(QString("Received message with corrupted data: %1\nmsg: %2").arg(errorText).arg(QString::fromLatin1(msg.toHex())));
 }
 
 void MainWindow::indicateLastUpdated()
@@ -569,8 +570,14 @@ void MainWindow::showErrorMessage(QString errorText)
 void MainWindow::sendRequestToServer(const Protocol::Request* req)
 {
     QByteArray msg;
+#if defined(MESSAGE_FORMAT_BINARY)
     MAKE_QDATASTREAM_NET(stream, &msg, QIODevice::WriteOnly);
-    stream << *req;
+    stream << *req;    
+#elif defined(MESSAGE_FORMAT_JSON)
+    QJsonObject jsonObject;
+    req->serialize(jsonObject);
+    msg = QJsonDocument(jsonObject).toJson(QJsonDocument::Compact);
+#endif
     m_client->sendMessageQueued(msg);
     f_logGeneral(QStringLiteral("Sent %1 request").arg(toQString(req->type)));
 }
