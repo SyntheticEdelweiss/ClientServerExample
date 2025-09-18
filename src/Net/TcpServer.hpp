@@ -22,6 +22,7 @@ public:
 
 protected:
     TcpServer(const quint8 _connType, const QString _connTypeName, QObject* parent = nullptr);
+    inline virtual QTcpServer* createServer() { return (new QTcpServer(this)); }
 
 public:
     TcpServer(QObject* parent = nullptr) : TcpServer(Net::ConnectionType::TcpServer, "TcpServer", parent) {}

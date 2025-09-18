@@ -10,6 +10,10 @@ add_library(${PROJECT_NAME}
     NetThread.hpp
     NetUtils.cpp
     NetUtils.hpp
+    SslClient.cpp
+    SslClient.hpp
+    SslServer.cpp
+    SslServer.hpp
     TcpClient.cpp
     TcpClient.hpp
     TcpServer.cpp
