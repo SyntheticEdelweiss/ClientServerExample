@@ -4,6 +4,7 @@
 #include <functional>
 
 #include <QtConcurrent>
+#include <QtDebug>
 
 #include "Common/Protocol.hpp"
 #include "Common/RegLogger.hpp"
@@ -315,6 +316,72 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
         auto future = QtConcurrent::mappedReduced(sequence, &ExampleServer::calculateFunctionT, &ExampleServer::calculateFunction_reduce, QtConcurrent::OrderedReduce);
         fw->setFuture(future);
         break;
+
+        /* TODO: not finished. Should replace part above after sequence.
+         * Need to do something about Task5 being templated struct, which prevents it from being stored in m_taskMap,
+         * e.g. use std::variant or Task5Base with std::dynamic_pointer_cast, or don't use m_taskMap at all and only use m_threadPoolMap
+         * since only 1 task at a time is allowed per user, so current task can be canceled by stopping all threads. */
+        if constexpr (false) {
+            QThreadPool* tpool = m_threadPoolMap.value(addrPort);
+            // update progress range
+            {
+                Request_ProgressRange req;
+                req.minimum = 0;
+                req.maximum = sequence.size();
+                sendRequestToClient(&req, task->addrPort);
+            }
+            // better even to have Request::result_type and then RStMapper_t<ReqT>::result_type
+            using result_t = decltype(Request_CalculateFunction::points);
+            auto task_ptr = make_shared<Task5<result_t>>();
+            auto* task = task_ptr.get();
+            task->request = std::move(req);
+            task->addrPort = addrPort;
+            task->rmsgHash = msgHash;
+            auto seqSize = sequence.size();
+            task->subresults.resize(seqSize);
+            task->remainingSubtaskCount.store(seqSize, std::memory_order_relaxed);
+            for (int i = 0; i < seqSize; ++i)
+            {
+                auto f = [this, task, i, subseq = std::move(sequence.at(i))]() -> void {
+                    if (task->isCanceled.load(std::memory_order_acquire))
+                    {
+                        // count is atomic -> only one thread can get to 0 -> no need for mutex
+                        if (--(task->remainingSubtaskCount) == 0)
+                        {
+                            Request_CancelCurrentTask req;
+                            sendRequestToClient(&req, task->addrPort);
+                            m_taskMap.remove(task->addrPort);
+                        }
+                        return;
+                    }
+                    auto subresult = calculateFunctionT(subseq);
+                    ++(task->progressValue); // increment + acquire -> no need for mutex
+                    // need mutex here to ensure progress update with higher value is sent later? // better just send increment update request and let client increment it itself
+                    {
+                        Request_ProgressValue req;
+                        req.value = task->progressValue;
+                        sendRequestToClient(&req, task->addrPort);
+                    }
+                    task->subresults[i] = std::move(subresult); // index is preassigned so threads can asynchronously put their subresult
+                    if (--(task->remainingSubtaskCount) == 0) // run finalizing reduce / decrement + acquire -> no need for mutex
+                    {
+                        auto req = request_cast<ReqT>(task->request.get());
+                        int totalSize = 0;
+                        for (auto const& subresult : task->subresults)
+                            totalSize += subresult.size();
+                        req->points.reserve(totalSize);
+                        for (auto const& subresult : task->subresults)
+                            req->points.append(subresult);
+                        sendRequestToClient(task->request.get(), task->addrPort);
+                        m_cache.insert(task->rmsgHash, req, req->byteSize());
+                        m_taskMap.remove(task->addrPort);
+                    }
+                    return;
+                };
+                QtConcurrent::run(tpool, f);
+            }
+            break;
+        }
     }
     case RequestType::CancelCurrentTask:
     {
@@ -428,15 +495,34 @@ QVector<QPoint> ExampleServer::calculateFunction(EquationType equationType, int 
 
 void ExampleServer::onClientConnected(Net::AddressPort addrPort)
 {
-    return; // Nothing to do I guess, since authorization is handled by TcpServer itself
+    auto* tpool = new QThreadPool();
+    tpool->setMaxThreadCount(4);
+    tpool->setExpiryTimeout(10000);
+    m_threadPoolMap.insert(addrPort, tpool);
 }
 
-// Client can disconnect without sending cancel request -> need to force cancel its task
+// Client can disconnect without sending cancel request -> need to force cancel its task. Also clean dedicated thread pool
 void ExampleServer::onClientDisconnected(Net::AddressPort addrPort)
 {
-    auto iter = m_taskMap.find(addrPort);
-    if (iter == m_taskMap.end())
-        return;
-    Task* task = iter.value().get();
-    task->futureWatcher->cancel();
+    auto iterTask = m_taskMap.find(addrPort);
+    if (iterTask != m_taskMap.end())
+    {
+        Task* task = iterTask.value().get();
+        task->futureWatcher->cancel();
+    }
+
+    auto iterPool = m_threadPoolMap.find(addrPort);
+    if (iterPool != m_threadPoolMap.end())
+    {
+        QThreadPool* tpool = iterPool.value();
+        tpool->setMaxThreadCount(0); // not a real way to outright block running new tasks in this pool, so might as well omit it
+        // since all clients have dedicated pools, global one can be used for handling their deletion
+        auto f = [tpool](){
+            tpool->waitForDone(-1); // not listed in qt5 documentation, but still works
+            tpool->deleteLater();
+            qWarning() << "Deleting QThreadPool" << tpool;
+        };
+        QtConcurrent::run(QThreadPool::globalInstance(), f);
+        m_threadPoolMap.erase(iterPool);
+    }
 }

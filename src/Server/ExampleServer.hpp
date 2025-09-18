@@ -15,13 +15,30 @@
 #include "Net/TcpServer.hpp"
 
 
-// template of same type as QFutureWatcher? But then to hold task itself there should be base task and shared_ptr...
 struct Task
 {
     std::unique_ptr<Protocol::Request> request;
     std::unique_ptr<QFutureWatcherBase> futureWatcher;
+    // not part of task, but convenient to keep it here
     Net::AddressPort addrPort;
-    quint64 rmsgHash{0}; // not the best place for it, but easier to keep it here
+    quint64 rmsgHash{0};
+};
+
+/* pre qt6 QtConcurrent::map(), etc. don't work with non-global QThreadPool -> need to emulate similar behavior by
+ * running multiple QtConcurrent::run() with whatever needed for progress updates, cancelation, etc. */
+template<typename ResultT>
+struct Task5
+{
+    std::unique_ptr<Protocol::Request> request;
+
+    QVector<ResultT> subresults; // resize before executing task -> threads write by predefined index lock-free
+    std::atomic<int> remainingSubtaskCount{0};
+    std::atomic<int> progressValue{0};
+    std::atomic<bool> isCanceled{false};
+
+    // not part of task, but convenient to keep it here
+    Net::AddressPort addrPort;
+    quint64 rmsgHash{0};
 };
 
 class ExampleServer : public QObject
@@ -34,6 +51,7 @@ private:
     TcpServer* m_server;
 
     QHash<Net::AddressPort, std::shared_ptr<Task>> m_taskMap;
+    QHash<Net::AddressPort, QThreadPool*> m_threadPoolMap;
 
     QCache<quint64, Protocol::Request> m_cache;
 
