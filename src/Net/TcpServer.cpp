@@ -7,7 +7,7 @@ using namespace std;
 
 TcpServer::TcpServer(const quint8 _connType, const QString _connTypeName, QObject* parent)
     : NetConnection(_connType, _connTypeName, parent)
-    , m_pServer(new QTcpServer(this))
+    , m_pServer(createServer())
 {
     connect(this, qOverload<QByteArray, QHostAddress, quint16>(&TcpServer::sendMessageToQueued), this, qOverload<QByteArray, QHostAddress, quint16>(&TcpServer::sendMessageTo), Qt::QueuedConnection);
     connect(this, qOverload<QByteArray, Net::AddressPort>(&TcpServer::sendMessageToQueued), this, qOverload<QByteArray, Net::AddressPort>(&TcpServer::sendMessageTo), Qt::QueuedConnection);
@@ -274,6 +274,17 @@ void TcpServer::readReceived()
     MAKE_QDATASTREAM_NET_D(streamSocket, pSocket);
     while (pSocket->bytesAvailable() > 0)
     {
+        streamSocket.startTransaction();
+        QByteArray rcvMsg;
+        streamSocket >> rcvMsg;
+        if (!streamSocket.commitTransaction())
+        {
+            // qWarning() << "server: transaction not commited";
+            return;
+        }
+        f_onReceivedMessage(rcvMsg, this, {pSocket->peerAddress(), pSocket->peerPort()});
+        continue;
+
         if (pendingMsg.pendingSize == 0)
         {
             if (pSocket->bytesAvailable() < m_headerSize)
@@ -427,29 +438,27 @@ void TcpServer::printError() const
 void TcpServer::printSocketError() const
 {
     QTcpSocket* clientSocket = qobject_cast<QTcpSocket*>(QObject::sender());    
-    auto iterClient = m_clientMap.find(clientSocket);
-    const ClientData& d = *(iterClient.value());
     QAbstractSocket::SocketError err = clientSocket->error();
     if (err == QAbstractSocket::RemoteHostClosedError)
     {
-        f_logGeneral(QString("%1: client %2:%3 (local %4:%5) sockd:%6: %7 (code %8)")
+        f_logGeneral(QStringLiteral("%1: client %2:%3 (local %4:%5) sockd:%6: %7 (code %8)")
                      .arg(nameId())
-                     .arg(d.peerAddrPort.addr.toString())
-                     .arg(d.peerAddrPort.port)
-                     .arg(d.localAddrPort.addr.toString())
-                     .arg(d.localAddrPort.port)
+                     .arg(clientSocket->peerAddress().toString())
+                     .arg(clientSocket->peerPort())
+                     .arg(clientSocket->localAddress().toString())
+                     .arg(clientSocket->localPort())
                      .arg(clientSocket->socketDescriptor())
                      .arg(clientSocket->errorString())
                      .arg(clientSocket->error()));
     }
     else
     {
-        f_logError(QString("%1: client %2:%3 (local %4:%5) sockd:%6: errorOccured: %7 (code %8)")
+        f_logError(QStringLiteral("%1: client %2:%3 (local %4:%5) sockd:%6: errorOccured: %7 (code %8)")
                    .arg(nameId())
-                   .arg(d.peerAddrPort.addr.toString())
-                   .arg(d.peerAddrPort.port)
-                   .arg(d.localAddrPort.addr.toString())
-                   .arg(d.localAddrPort.port)
+                   .arg(clientSocket->peerAddress().toString())
+                   .arg(clientSocket->peerPort())
+                   .arg(clientSocket->localAddress().toString())
+                   .arg(clientSocket->localPort())
                    .arg(clientSocket->socketDescriptor())
                    .arg(clientSocket->errorString())
                    .arg(clientSocket->error()));
