@@ -13,14 +13,16 @@ set(PROJECT_SOURCES
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Charts)
+
+find_package(QT NAMES Qt6 Qt5 REQUIRED) # find Qt*Config.cmake and set QT_VERSION_MAJOR, etc.
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets Charts)
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Common
     Net
-    Qt5::Core
-    Qt5::Gui
-    Qt5::Widgets
-    Qt5::Charts
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Charts
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

@@ -14,10 +14,11 @@ set(PROJECT_SOURCES
 )
 
 add_library(${PROJECT_NAME} STATIC ${PROJECT_SOURCES})
-find_package(Qt5 REQUIRED COMPONENTS Core Network)
+find_package(QT NAMES Qt6 Qt5 REQUIRED) # find Qt*Config.cmake and set QT_VERSION_MAJOR, etc.
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Network)
 target_link_libraries(${PROJECT_NAME} PUBLIC
-    Qt5::Core
-    Qt5::Network
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Network
 )
 
 if(WIN32)
