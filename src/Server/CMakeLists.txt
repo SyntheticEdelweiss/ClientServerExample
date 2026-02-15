@@ -1,28 +1,21 @@
 cmake_minimum_required(VERSION 3.16)
-project(Server VERSION 1.0 LANGUAGES CXX)
+project(Server VERSION 1.0)
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/../global.cmake)
-
-set(PROJECT_SOURCES
+add_executable(${PROJECT_NAME}
+    ExampleServer.cpp
+    ExampleServer.hpp
     main.cpp
-    ExampleServer.hpp ExampleServer.cpp
 )
 
-add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
-
-find_package(Qt5 REQUIRED COMPONENTS Core Concurrent)
-target_link_directories(${PROJECT_NAME} PRIVATE
-    # ../
+find_package(QT NAMES Qt5 Qt6 REQUIRED) # find Qt*Config.cmake and set QT_VERSION_MAJOR, etc.
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS
+    Concurrent
+    Core
 )
+
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Common
     Net
-    Qt5::Core
-    Qt5::Concurrent
-)
-
-include(GNUInstallDirs)
-install(TARGETS ${PROJECT_NAME}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    Qt${QT_VERSION_MAJOR}::Concurrent
+    Qt${QT_VERSION_MAJOR}::Core
 )
