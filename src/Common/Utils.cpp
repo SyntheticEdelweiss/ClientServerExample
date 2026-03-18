@@ -4,9 +4,11 @@
 
 using namespace std;
 
-/* min_chunk_size actually does not guarantee every (chunk_size >= min_chunk_size), because imagine divideIntoChunks(1, 10, 2, 6) - we can divide that into {{1,6}, {7,10}}
- * but if we enforce min_chunk_size, that outputs {{1,10}}. Now image corner case like divideIntoChunks(0, INT_MAX, 2, (INT_MAX / 2 + 2)) - we could have 2 chunks of almost half INT_MAX,
- * but instead we get 1 chunk {0, INT_MAX}. Since this function is used to divide range into subranges for paralellism, first approach is much preferred. */
+/* min_chunk_size actually does not guarantee *every* (chunk_size >= min_chunk_size), because imagine divideIntoChunks(1, 10, 2, 6) - we can divide that into {{1,6}, {7,10}}
+ * but if we enforce min_chunk_size for *every* chunk, then we can't have 2th chunk be of size 4 -> that outputs {{1,10}}.
+ * Now imagine corner case like divideIntoChunks(0, INT_MAX, 2, (INT_MAX / 2 + 2)) - we could have 2 chunks of almost half INT_MAX, but instead we get 1 chunk {0, INT_MAX}.
+ * Since this function is used to divide range into subranges for paralellism, optimal solution is to have (n-1) chunks have (chunk_size >= min_chunk_size),
+ * and the last chunk have (chunk_size <= min_chunk_size) */
 QVector<std::tuple<int, int>> divideIntoChunks(int x_from, int x_to, int max_chunk_count, int min_chunk_size)
 {
     QVector<std::tuple<int, int>> chunks;
