@@ -289,7 +289,7 @@ void ExampleServer::parseRequest(QByteArray msg, NetConnection* const, Net::Addr
             QVector<std::tuple<Protocol::EquationType, int, int, int, const int, const int, const int>> sequence;
             auto ranges = divideIntoChunks(req->x_from, req->x_to, m_maxChunkCount, m_minChunkSize);
             for (auto const& range : ranges)
-                sequence.append(make_tuple(req->equationType, req->x_from, req->x_to, req->x_step, req->a, req->b, req->c));
+                sequence.append(make_tuple(req->equationType, get<0>(range), get<1>(range), req->x_step, req->a, req->b, req->c));
             return sequence;
         }();
 
