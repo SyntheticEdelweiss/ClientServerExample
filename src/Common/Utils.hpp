@@ -37,7 +37,7 @@
     (type)((var))
 
 #define Q_CRITICAL_UNREACHABLE() \
-    qCritical(__FILE__ ":" __STRINGIFY(__LINE__) " should be unreachable.");
+    qCritical("%s:%d should be unreachable.", __FILE__, __LINE__);
 
 
 // type_trait to check for classes derived from std::basic_string
