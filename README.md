@@ -44,6 +44,12 @@ You can toggle message format, byte-order, and other settings at build time.
    ```bash
    git clone https://github.com/SyntheticEdelweiss/ClientServerExample.git
    cd ./ClientServerExample
-   mkdir build && cd build
-   cmake -S ../src
-   cmake --build . --config Release -- -j8
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-w
+   cmake --build build --clean-first
+   ```
+
+   Depending on your system configuration, you might need to explicitly specify some extra stuff, e.g.
+   ```bash
+   cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-w -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/mingw81_64" -DCMAKE_C_COMPILER="C:\Qt\Tools\mingw810_64\bin\gcc.exe" -DCMAKE_CXX_COMPILER="C:\Qt\Tools\mingw810_64\bin\g++.exe"
+   cmake --build build --clean-first
+   ```
